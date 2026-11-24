@@ -1,0 +1,7 @@
+{
+  "name": "aiAssistant",
+  "version": "1.0.0",
+  "description": "AI 烹饪助手云函数",
+  "main": "index.js",
+  "dependencies": {}
+}

@@ -1,0 +1,114 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "做饭吧"
+			}
+		},
+		{
+			"path": "pages/ai-chat/index",
+			"style": {
+				"navigationBarTitleText": "AI 聊菜吧"
+			}
+		},
+		{
+			"path": "pages/user/index",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		},
+		{
+			"path": "pages/user/history/index",
+			"style": {
+				"navigationBarTitleText": "浏览历史"
+			}
+		},
+		{
+			"path": "pages/user/personal_recipese",
+			"style": {
+				"navigationBarTitleText": "个人菜谱"
+			}
+		},
+		{
+			"path": "pages/user/original_recipes",
+			"style": {
+				"navigationBarTitleText": "自创菜谱"
+			}
+		},
+		{
+			"path": "pages/fridge/index",
+			"style": {
+				"navigationBarTitleText": "剩菜盲盒"
+			}
+		},
+		{
+			"path": "pages/recipe-detail/index",
+			"style": {
+				"navigationBarTitleText": "菜谱详情"
+			}
+		},
+		{
+			"path": "pages/index/search",
+			"style": {
+				"navigationBarTitleText": "搜索菜谱"
+			}
+		},
+		{
+			"path": "pages/recipe-list/index",
+			"style": {
+				"navigationBarTitleText": "菜谱分类"
+			}
+		},
+		{
+			"path": "pages/meal-planner/index",
+			"style": {
+				"navigationBarTitleText": "智能配餐管家"
+			}
+		},
+		{
+			"path": "pages/meal-plan-result/index",
+			"style": {
+				"navigationBarTitleText": "套餐方案"
+			}
+		},
+		{
+			"path": "pages/shopping-list/index",
+			"style": {
+				"navigationBarTitleText": "我的采购单"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "做饭吧",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F7F8FA"
+	},
+	"tabBar": {
+		"color": "#999999",
+		"selectedColor": "#FA6650",
+		"borderStyle": "black",
+		"backgroundColor": "#FFFFFF",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "找菜",
+				"iconPath": "static/tabbar/home.png",
+				"selectedIconPath": "static/tabbar/home-active.png"
+			},
+			{
+				"pagePath": "pages/ai-chat/index",
+				"text": "AI 聊菜",
+				"iconPath": "static/tabbar/ai.png",
+				"selectedIconPath": "static/tabbar/ai-active.png"
+			},
+			{
+				"pagePath": "pages/user/index",
+				"text": "我的",
+				"iconPath": "static/tabbar/user.png",
+				"selectedIconPath": "static/tabbar/user-active.png"
+			}
+		]
+	}
+}
