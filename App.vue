@@ -16,7 +16,7 @@
 			console.log('App Launch')
 			if (typeof wx.cloud !== 'undefined') {
 				wx.cloud.init({
-					env: 'cloud1-6g897ntufd35a942',
+					env: 'cloud1-d6gdxrlf5bcb4e41c',
 					traceUser: true
 				})
 				this.globalData = {
