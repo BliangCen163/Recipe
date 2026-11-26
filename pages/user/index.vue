@@ -13,6 +13,7 @@
 			<view class="header__info">
 				<text class="header__name">{{ displayName }}</text>
 				<text class="header__status" @click="goToProfile">{{ statusText }}</text>
+				<text v-if="needsProfile" class="header__hint" @click="goToProfile">完善头像昵称，展示微信昵称 ›</text>
 			</view>
 			<view class="header__edit" @click="goToProfile">
 				<text class="header__edit-text">编辑资料 ›</text>
@@ -107,7 +108,21 @@ const loadAiBackend = () => {
 	}
 }
 
-const displayName = computed(() => userStore.nickname || '美食爱好者')
+const FALLBACK_NICKNAME = '微信用户'
+const DEFAULT_CLOUD_NICKNAME = '美食爱好者'
+const storedNickname = ref('')
+
+const normalizeNickname = (value) => {
+	const text = String(value || '').trim()
+	if (!text || text === DEFAULT_CLOUD_NICKNAME) return ''
+	return text
+}
+
+const confirmedNickname = computed(
+	() => normalizeNickname(userStore.nickname) || normalizeNickname(storedNickname.value)
+)
+const displayName = computed(() => confirmedNickname.value || FALLBACK_NICKNAME)
+const needsProfile = computed(() => userStore.isLoggedIn && !confirmedNickname.value)
 
 const statusText = computed(() => {
 	if (userStore.isLoggedIn) return '尊贵的用户，欢迎回来'
@@ -169,6 +184,7 @@ const setAiBackend = (value) => {
 
 onShow(() => {
 	loadAiBackend()
+	storedNickname.value = uni.getStorageSync('nickname') || ''
 })
 </script>
 
@@ -233,6 +249,11 @@ onShow(() => {
 	&__status {
 		font-size: 24rpx;
 		color: #9aa0a6;
+	}
+
+	&__hint {
+		font-size: 22rpx;
+		color: $primary-color;
 	}
 
 	&__edit {

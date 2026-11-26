@@ -34,14 +34,17 @@
 			</view>
 			<view class="nickname-row">
 				<input
-					v-model="nickname"
+					:value="nickname"
 					class="nickname-row__input"
 					type="nickname"
-					placeholder="填写或选择微信昵称"
+					maxlength="32"
+					placeholder="点击输入，键盘上方可选择微信昵称"
 					:focus="nicknameFocused"
 					:disabled="!userStore.isLoggedIn || isSavingNickname"
+					@input="onNicknameInput"
 					@focus="onNicknameFocus"
 					@blur="onNicknameBlur"
+					@confirm="onNicknameBlur"
 				/>
 				<view
 					class="nickname-row__save"
@@ -64,11 +67,11 @@
 					<text class="status__value">已登录</text>
 				</view>
 				<view class="status__row">
-					<text class="status__label">微信昵称</text>
-					<text class="status__value" :class="{ 'status__value--muted': !wechatNickname }">{{ wechatNickname || '未设置微信昵称' }}</text>
+					<text class="status__label">昵称</text>
+					<text class="status__value" :class="{ 'status__value--muted': !wechatNickname }">{{ wechatNickname || '微信用户' }}</text>
 				</view>
 				<view v-if="!wechatNickname" class="status__hint" @click="focusNicknameInput">
-					<text class="status__hint-text">点上方「昵称」框选择微信昵称后保存 ›</text>
+					<text class="status__hint-text">点上方「昵称」框，从键盘候选里选择微信昵称 ›</text>
 				</view>
 				<view class="status__row">
 					<text class="status__label">OpenID</text>
@@ -81,7 +84,7 @@
 			</view>
 
 			<view v-else class="status">
-				<text class="status__text">{{ userStore.loginError || '尚未登录，点击下方按钮发起微信登录' }}</text>
+				<text class="status__text">{{ loginHint }}</text>
 			</view>
 
 			<view
@@ -109,19 +112,30 @@ const isSavingNickname = ref(false)
 const isUploadingAvatar = ref(false)
 const isLoggingIn = ref(false)
 
-const displayName = computed(() => nickname.value || userStore.nickname || '美食爱好者')
-
-const DEFAULT_NICKNAME = '美食爱好者'
+const FALLBACK_NICKNAME = '微信用户'
+const DEFAULT_CLOUD_NICKNAME = '美食爱好者'
 const nicknameFocused = ref(false)
 
-const wechatNickname = computed(() => {
-	const value = (userStore.nickname || '').trim()
-	return value && value !== DEFAULT_NICKNAME ? value : ''
-})
+const normalizeNickname = (value) => {
+	const text = String(value || '').trim()
+	if (!text || text === DEFAULT_CLOUD_NICKNAME) return ''
+	return text
+}
+
+const wechatNickname = computed(() => normalizeNickname(userStore.nickname))
+
+const displayName = computed(() => nickname.value || wechatNickname.value || FALLBACK_NICKNAME)
 
 const canSaveNickname = computed(() => {
 	if (!userStore.isLoggedIn || isSavingNickname.value) return false
-	return nickname.value.trim() !== (userStore.nickname || '').trim()
+	return normalizeNickname(nickname.value) !== wechatNickname.value
+})
+
+const loginHint = computed(() => {
+	if (userStore.loginError) {
+		return `登录未完成：${userStore.loginError}，可点击下方按钮重试`
+	}
+	return '尚未登录，点击下方按钮发起微信登录'
 })
 
 const maskedOpenid = computed(() => {
@@ -131,14 +145,14 @@ const maskedOpenid = computed(() => {
 })
 
 const syncNickname = () => {
-	nickname.value = userStore.nickname || ''
+	nickname.value = normalizeNickname(userStore.nickname)
 }
 
 watch(
 	() => userStore.nickname,
 	(value) => {
 		if (isEditingNickname.value || isSavingNickname.value) return
-		nickname.value = value || ''
+		nickname.value = normalizeNickname(value)
 	}
 )
 
@@ -148,6 +162,10 @@ onShow(() => {
 
 const onNicknameFocus = () => {
 	isEditingNickname.value = true
+}
+
+const onNicknameInput = (event) => {
+	nickname.value = String(event?.detail?.value ?? '')
 }
 
 const onNicknameBlur = (event) => {
@@ -172,21 +190,21 @@ const focusNicknameInput = () => {
 const saveNickname = async (value) => {
 	if (isSavingNickname.value) return
 
-	const nextNickname = String(value ?? nickname.value).trim()
+	const nextNickname = normalizeNickname(value ?? nickname.value)
 
 	if (!userStore.isLoggedIn || !userStore.openid) {
-		nickname.value = userStore.nickname || ''
+		nickname.value = normalizeNickname(userStore.nickname)
 		uni.showToast({ title: '请先完成微信登录', icon: 'none' })
 		return
 	}
 
 	if (!nextNickname) {
-		nickname.value = userStore.nickname || ''
-		uni.showToast({ title: '昵称不能为空', icon: 'none' })
+		nickname.value = normalizeNickname(userStore.nickname)
+		uni.showToast({ title: '请选择或填写微信昵称', icon: 'none' })
 		return
 	}
 
-	if (nextNickname === userStore.nickname) {
+	if (nextNickname === wechatNickname.value) {
 		nickname.value = nextNickname
 		return
 	}
@@ -210,16 +228,17 @@ const saveNickname = async (value) => {
 		const savedNickname = result.nickname || nextNickname
 		const savedAvatar = result.avatarUrl || userStore.avatarUrl
 
-		nickname.value = savedNickname
+		const storedNickname = normalizeNickname(savedNickname) || nextNickname
+		nickname.value = storedNickname
 		userStore.updateProfile(savedNickname, savedAvatar)
-		uni.setStorageSync('nickname', savedNickname)
+		uni.setStorageSync('nickname', storedNickname)
 		if (savedAvatar) {
 			uni.setStorageSync('avatarUrl', savedAvatar)
 		}
 		uni.showToast({ title: '昵称已保存', icon: 'success' })
 	} catch (error) {
 		console.error('[profile] saveNickname failed:', error)
-		nickname.value = userStore.nickname || ''
+		nickname.value = normalizeNickname(userStore.nickname)
 		uni.showToast({ title: error?.message || '昵称保存失败', icon: 'none' })
 	} finally {
 		isSavingNickname.value = false
@@ -262,10 +281,11 @@ const onChooseAvatar = async (event) => {
 		}
 
 		const savedNickname = result.nickname || userStore.nickname
-		nickname.value = savedNickname || nickname.value
+		const normalizedNickname = normalizeNickname(savedNickname)
+		nickname.value = normalizedNickname
 		userStore.updateProfile(savedNickname, fileID)
-		if (savedNickname) {
-			uni.setStorageSync('nickname', savedNickname)
+		if (normalizedNickname) {
+			uni.setStorageSync('nickname', normalizedNickname)
 		}
 		uni.setStorageSync('avatarUrl', fileID)
 		uni.showToast({ title: '头像已更新', icon: 'success' })
