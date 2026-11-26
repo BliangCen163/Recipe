@@ -1,35 +1,21 @@
 <template>
 	<view class="page">
 		<view class="header">
-			<button
-				class="header__avatar-btn"
-				open-type="chooseAvatar"
-				hover-class="none"
-				@chooseavatar="onChooseAvatar"
-			>
-				<image
-					v-if="userStore.avatarUrl"
-					class="header__avatar-image"
-					:src="userStore.avatarUrl"
-					mode="aspectFill"
-				/>
-				<view v-else class="header__avatar">
-					<text class="header__avatar-text">{{ displayName.slice(0, 1) }}</text>
-				</view>
-				<view class="header__avatar-tip">
-					<text class="header__avatar-tip-text">点我换头像</text>
-				</view>
-			</button>
+			<image
+				v-if="userStore.avatarUrl"
+				class="header__avatar-image"
+				:src="userStore.avatarUrl"
+				mode="aspectFill"
+			/>
+			<view v-else class="header__avatar">
+				<text class="header__avatar-text">{{ displayName.slice(0, 1) }}</text>
+			</view>
 			<view class="header__info">
-				<input
-					v-model="nickname"
-					class="header__name-input"
-					type="nickname"
-					placeholder="点击填写昵称"
-					@blur="onNicknameBlur"
-				/>
-				<text class="header__status" @click="onStatusTap">{{ statusText }}</text>
-				<text class="header__hint">{{ hintText }}</text>
+				<text class="header__name">{{ displayName }}</text>
+				<text class="header__status" @click="goToProfile">{{ statusText }}</text>
+			</view>
+			<view class="header__edit" @click="goToProfile">
+				<text class="header__edit-text">编辑资料 ›</text>
 			</view>
 		</view>
 
@@ -91,13 +77,10 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { userStore } from '../../stores/user'
 
-const isSavingAvatar = ref(false)
-const isSavingNickname = ref(false)
-const nickname = ref('')
 const aiBackend = ref('cloudbase')
 
 const backendOptions = [
@@ -124,24 +107,19 @@ const loadAiBackend = () => {
 	}
 }
 
-const displayName = computed(() => {
-	if (nickname.value) return nickname.value
-	if (userStore.nickname) return userStore.nickname
-	return '美食爱好者'
-})
+const displayName = computed(() => userStore.nickname || '美食爱好者')
 
 const statusText = computed(() => {
 	if (userStore.isLoggedIn) return '尊贵的用户，欢迎回来'
 	if (userStore.loginLoading) return '正在为你准备登录状态...'
-	if (userStore.loginError) return '未登录，点击这里重新发起微信登录'
-	return '未登录，点击这里重新发起微信登录'
+	return '未登录，点击前往资料页登录'
 })
 
-const hintText = computed(() => {
-	if (isSavingAvatar.value) return '头像上传中，请稍候'
-	if (isSavingNickname.value) return '昵称保存中，请稍候'
-	return '点击头像或昵称即可修改资料'
-})
+const goToProfile = () => {
+	uni.navigateTo({
+		url: '/pages/user/profile/index'
+	})
+}
 
 const goToShoppingList = () => {
 	uni.navigateTo({
@@ -165,114 +143,6 @@ const goToRecipeFavorites = () => {
 	uni.navigateTo({
 		url: '/pages/recipe-favorites/recipe-favorites'
 	})
-}
-
-const onChooseAvatar = async (event) => {
-	if (!userStore.openid) {
-		uni.showToast({ title: '请先完成微信登录', icon: 'none' })
-		return
-	}
-
-	const avatarPath = event.detail?.avatarUrl
-	if (!avatarPath) return
-
-	const ext = avatarPath.split('.').pop() || 'png'
-	const cloudPath = `avatars/${userStore.openid}-${Date.now()}.${ext}`
-
-	isSavingAvatar.value = true
-	uni.showLoading({ title: '上传头像中...' })
-	try {
-		const { fileID } = await wx.cloud.uploadFile({
-			cloudPath,
-			filePath: avatarPath
-		})
-
-		const { result } = await wx.cloud.callFunction({
-			name: 'updateUserProfile',
-			data: {
-				avatarUrl: fileID
-			}
-		})
-
-		if (!result?.success) {
-			throw new Error(result?.errorMessage || '头像更新失败')
-		}
-
-		userStore.updateProfile(result.nickname || userStore.nickname, result.avatarUrl || fileID)
-		uni.showToast({ title: '头像已更新', icon: 'success' })
-	} catch (error) {
-		console.error('[user] onChooseAvatar failed:', error)
-		uni.showToast({ title: '头像更新失败', icon: 'none' })
-	} finally {
-		isSavingAvatar.value = false
-		uni.hideLoading()
-	}
-}
-
-const onNicknameBlur = async (event) => {
-	if (!userStore.openid) {
-		uni.showToast({ title: '请先完成微信登录', icon: 'none' })
-		nickname.value = userStore.nickname || '美食爱好者'
-		return
-	}
-
-	const nextNickname = (event.detail?.value || nickname.value || '').trim() || '美食爱好者'
-	nickname.value = nextNickname
-
-	if (nextNickname === userStore.nickname) return
-
-	try {
-		isSavingNickname.value = true
-		uni.showLoading({ title: '保存昵称中...' })
-		const { result } = await wx.cloud.callFunction({
-			name: 'updateUserProfile',
-			data: {
-				nickname: nextNickname,
-				avatarUrl: userStore.avatarUrl
-			}
-		})
-
-		if (!result?.success) {
-			throw new Error(result?.errorMessage || '昵称更新失败')
-		}
-
-		nickname.value = result.nickname || nextNickname
-		userStore.updateProfile(result.nickname || nextNickname, result.avatarUrl || userStore.avatarUrl)
-		uni.setStorageSync('nickname', result.nickname || nextNickname)
-		uni.setStorageSync('avatarUrl', result.avatarUrl || userStore.avatarUrl)
-		uni.showToast({ title: '昵称已保存', icon: 'success' })
-	} catch (error) {
-		console.error('[user] onNicknameBlur failed:', error)
-		nickname.value = userStore.nickname || '美食爱好者'
-		uni.showToast({ title: '昵称保存失败', icon: 'none' })
-	} finally {
-		isSavingNickname.value = false
-		uni.hideLoading()
-	}
-}
-
-const retryLogin = async () => {
-	const app = getApp()
-	if (app?.globalData?.runSilentLogin) {
-		uni.showLoading({ title: '正在重新登录...' })
-		try {
-			await app.globalData.runSilentLogin()
-			uni.showToast({
-				title: userStore.openid ? '登录成功' : '登录未完成，请稍后重试',
-				icon: 'none'
-			})
-		} finally {
-			uni.hideLoading()
-		}
-		return
-	}
-
-	uni.showToast({ title: '重试入口不可用，请重启小程序', icon: 'none' })
-}
-
-const onStatusTap = () => {
-	if (userStore.isLoggedIn || userStore.loginLoading) return
-	retryLogin()
 }
 
 const setAiBackend = (value) => {
@@ -299,19 +169,7 @@ const setAiBackend = (value) => {
 
 onShow(() => {
 	loadAiBackend()
-
-	if (userStore.openid) {
-		nickname.value = userStore.nickname || '美食爱好者'
-	}
 })
-
-watch(
-	() => userStore.openid,
-	(value) => {
-		nickname.value = value ? userStore.nickname || '美食爱好者' : ''
-	},
-	{ immediate: true }
-)
 </script>
 
 <style lang="scss" scoped>
@@ -328,17 +186,6 @@ watch(
 	padding: 48rpx 32rpx 32rpx;
 	background: linear-gradient(145deg, #fff7f4 0%, #ffffff 100%);
 
-	&__avatar-btn {
-		padding: 0;
-		border: none;
-		background: transparent;
-		line-height: 1;
-	}
-
-	&__avatar-btn::after {
-		border: none;
-	}
-
 	&__avatar {
 		width: 96rpx;
 		height: 96rpx;
@@ -348,6 +195,7 @@ watch(
 		align-items: center;
 		justify-content: center;
 		box-shadow: 0 8rpx 24rpx rgba(250, 102, 80, 0.25);
+		flex-shrink: 0;
 	}
 
 	&__avatar-image {
@@ -356,6 +204,7 @@ watch(
 		border-radius: 50%;
 		display: block;
 		box-shadow: 0 8rpx 24rpx rgba(250, 102, 80, 0.18);
+		flex-shrink: 0;
 	}
 
 	&__avatar-text {
@@ -364,39 +213,39 @@ watch(
 		color: #ffffff;
 	}
 
-	&__avatar-tip {
-		margin-top: 12rpx;
-	}
-
-	&__avatar-tip-text {
-		font-size: 22rpx;
-		color: $primary-color;
-		font-weight: 600;
-	}
-
 	&__info {
 		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 8rpx;
 	}
 
-	&__name-input {
+	&__name {
 		font-size: 34rpx;
 		font-weight: 700;
 		color: #1f2329;
-		height: 56rpx;
-		padding: 0;
-	}
-
-	&__hint {
-		font-size: 22rpx;
-		color: $primary-color;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	&__status {
 		font-size: 24rpx;
 		color: #9aa0a6;
+	}
+
+	&__edit {
+		flex-shrink: 0;
+		padding: 12rpx 22rpx;
+		border-radius: 999rpx;
+		background: rgba(250, 102, 80, 0.1);
+	}
+
+	&__edit-text {
+		font-size: 24rpx;
+		font-weight: 600;
+		color: $primary-color;
 	}
 }
 

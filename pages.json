@@ -37,6 +37,12 @@
 			}
 		},
 		{
+			"path": "pages/user/profile/index",
+			"style": {
+				"navigationBarTitleText": "编辑资料"
+			}
+		},
+		{
 			"path": "pages/recipe-favorites/recipe-favorites",
 			"style": {
 				"navigationBarTitleText": "菜谱收藏",
