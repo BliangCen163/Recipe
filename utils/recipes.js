@@ -535,3 +535,54 @@ export const normalizeRecipeDetail = (recipe = {}) => {
 }
 
 export const sortCuisineNames = (names = []) => sortWithOrder(names)
+
+const AMOUNT_PATTERN = /^\s*(\d+(?:\.\d+)?)\s*([^\d\s].*)?$/
+
+export const parseAmountText = (text) => {
+	const raw = String(text || '').trim()
+	if (!raw) return null
+
+	const matched = raw.match(AMOUNT_PATTERN)
+	if (!matched) return null
+
+	const value = Number(matched[1])
+	if (!Number.isFinite(value)) return null
+
+	return { value, unit: String(matched[2] || '').trim() }
+}
+
+export const formatAmountText = (value, unit = '') => {
+	if (!Number.isFinite(value)) return ''
+
+	const rounded = Math.round(value * 100) / 100
+	const numberText = Number.isInteger(rounded)
+		? String(rounded)
+		: String(rounded).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
+
+	if (!unit) return numberText
+	return /^[\u4e00-\u9fa5]/.test(unit) ? `${numberText} ${unit}` : `${numberText}${unit}`
+}
+
+export const scaleAmountText = (amount, ratio = 1) => {
+	const raw = String(amount || '').trim()
+	if (!raw || !Number.isFinite(ratio) || ratio <= 0 || ratio === 1) return raw
+
+	const parsed = parseAmountText(raw)
+	if (!parsed) return raw
+
+	return formatAmountText(parsed.value * ratio, parsed.unit)
+}
+
+export const mergeAmountText = (left, right) => {
+	const base = String(left || '').trim()
+	const extra = String(right || '').trim()
+	if (!base) return extra
+	if (!extra) return base
+
+	const a = parseAmountText(base)
+	const b = parseAmountText(extra)
+	if (!a || !b) return `${base} + ${extra}`
+	if (a.unit !== b.unit) return `${base} + ${extra}`
+
+	return formatAmountText(a.value + b.value, a.unit)
+}

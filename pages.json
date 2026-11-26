@@ -37,6 +37,13 @@
 			}
 		},
 		{
+			"path": "pages/recipe-favorites/recipe-favorites",
+			"style": {
+				"navigationBarTitleText": "菜谱收藏",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
 			"path": "pages/fridge/index",
 			"style": {
 				"navigationBarTitleText": "剩菜盲盒"

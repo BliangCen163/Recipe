@@ -115,6 +115,7 @@ exports.main = async (event) => {
         resultRefs: {},
         errorMessage: '',
         createdBy: openid,
+        _openid: openid,
         createdAt: now,
         startedAt: null,
         finishedAt: null,

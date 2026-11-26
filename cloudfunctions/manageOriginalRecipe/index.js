@@ -64,6 +64,7 @@ exports.main = async (event) => {
 				image: cover,
 				images,
 				author: '用户发布',
+				_openid: openid,
 				createdBy: openid,
 				openid,
 				sourceOriginalRecipeId: recipeId,

@@ -6,39 +6,76 @@ const db = cloud.database()
 const _ = db.command
 
 const DEFAULT_NICKNAME = '美食爱好者'
+const VALID_KINDS = ['menu', 'recipe', 'original']
+const VALID_ACTIONS = ['add', 'remove', 'toggle']
+
+function normalizeKind(value) {
+  if (VALID_KINDS.includes(value)) return value
+  if (value === 'recipes') return 'recipe'
+  if (value === 'original_recipes') return 'original'
+  return 'recipe'
+}
+
+function normalizeTags(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((tag) => typeof tag === 'string' && tag.trim())
+    .map((tag) => tag.trim())
+}
+
+function normalizeStrings(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item) => typeof item === 'string' && item.trim())
+    .map((item) => item.trim())
+}
 
 async function ensureUser(openid) {
   const userRef = db.collection('users').doc(openid)
-  const doc = await userRef.get().catch(() => null)
+  const existed = await userRef.get().catch(() => null)
+  if (existed && existed.data) return existed.data
 
-  if (!doc || !doc.data) {
-    await userRef.set({
-      data: {
-        openid,
-        nickname: DEFAULT_NICKNAME,
-        avatarUrl: '',
-        savedRecipes: [],
-        shoppingList: [],
-        createdAt: db.serverDate()
-      }
-    })
-
-    return {
-      openid,
-      nickname: DEFAULT_NICKNAME,
-      avatarUrl: '',
-      savedRecipes: [],
-      shoppingList: []
-    }
+  const now = new Date()
+  const profile = {
+    _openid: openid,
+    openid,
+    nickname: DEFAULT_NICKNAME,
+    avatarUrl: '',
+    prefs: { aiBackend: 'cloudbase' },
+    stats: { favoriteCount: 0, historyCount: 0, recipeCount: 0 },
+    schemaVersion: 2,
+    createdAt: now,
+    updatedAt: now,
+    lastLoginAt: now
   }
 
-  return doc.data
+  await userRef.set({ data: profile })
+  return profile
+}
+
+async function applyFavoriteDelta(openid, menuId, delta) {
+  if (menuId) {
+    await db
+      .collection('menu')
+      .doc(menuId)
+      .update({
+        data: { favoriteCount: _.inc(delta), updatedAt: new Date() }
+      })
+      .catch(() => null)
+  }
+
+  await db
+    .collection('users')
+    .doc(openid)
+    .update({
+      data: { 'stats.favoriteCount': _.inc(delta) }
+    })
+    .catch(() => null)
 }
 
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
-  const inputRecipe = event.recipe || {}
 
   if (!openid) {
     return {
@@ -47,78 +84,73 @@ exports.main = async (event) => {
     }
   }
 
-  if (!inputRecipe.title) {
+  const recipe = event.recipe || {}
+  const snapshotInput = event.snapshot || {}
+  const recipeId = String(event.recipeId || recipe._id || '').trim()
+  const recipeKind = normalizeKind(event.recipeKind || recipe.recipeKind || recipe.source)
+  const action = VALID_ACTIONS.includes(event.action) ? event.action : 'toggle'
+
+  if (!recipeId) {
+    return {
+      success: false,
+      errorMessage: '缺少菜谱 ID'
+    }
+  }
+
+  const title = String(snapshotInput.title || recipe.title || '').trim()
+
+  if (action !== 'remove' && !title) {
     return {
       success: false,
       errorMessage: '缺少菜谱标题，无法收藏'
     }
   }
 
+  const snapshot = {
+    title,
+    cover: String(snapshotInput.cover || recipe.cover || '').trim(),
+    tags: normalizeTags(snapshotInput.tags || recipe.tags),
+    sourceIngredients: normalizeStrings(snapshotInput.sourceIngredients || recipe.sourceIngredients)
+  }
+
   try {
-    let recipeId = inputRecipe._id || ''
-    const sourceMenuId = inputRecipe.sourceMenuId || ''
+    await ensureUser(openid)
 
-    if (!recipeId) {
-      let existingRecipe = null
-      if (sourceMenuId) {
-        const queryResult = await db.collection('recipes')
-          .where({ sourceMenuId })
-          .limit(1)
-          .get()
-        if (queryResult.data.length > 0) {
-          existingRecipe = queryResult.data[0]
-        }
+    // 用 openid + recipeId 组成固定文档 id：天然去重，重复点击不会产生多条记录
+    const favoriteRef = db.collection('favorites').doc(`${openid}_${recipeId}`)
+    const existed = await favoriteRef.get().catch(() => null)
+    const isFavorited = !!(existed && existed.data)
+    const shouldRemove = action === 'remove' || (action === 'toggle' && isFavorited)
+
+    if (shouldRemove) {
+      if (!isFavorited) {
+        return { success: true, isFavorited: false, recipeId, recipeKind }
       }
 
-      if (existingRecipe) {
-        recipeId = existingRecipe._id
-      } else {
-        const recipePayload = {
-          title: inputRecipe.title,
-          tags: Array.isArray(inputRecipe.tags) ? inputRecipe.tags : [],
-          ingredients: Array.isArray(inputRecipe.ingredients) ? inputRecipe.ingredients : [],
-          steps: Array.isArray(inputRecipe.steps) ? inputRecipe.steps : [],
-          tips: inputRecipe.tips || '',
-          cover: inputRecipe.cover || '',
-          sourceIngredients: Array.isArray(inputRecipe.sourceIngredients) ? inputRecipe.sourceIngredients : [],
-          sourceMenuId,
-          createdBy: openid,
-          createdAt: db.serverDate()
-        }
+      await favoriteRef.remove()
+      await applyFavoriteDelta(openid, recipeKind === 'menu' ? recipeId : '', -1)
 
-        const addResult = await db.collection('recipes').add({
-          data: recipePayload
-        })
-        recipeId = addResult._id
+      return { success: true, isFavorited: false, recipeId, recipeKind }
+    }
+
+    if (isFavorited) {
+      return { success: true, isFavorited: true, recipeId, recipeKind, already: true }
+    }
+
+    await favoriteRef.set({
+      data: {
+        _openid: openid,
+        openid,
+        recipeId,
+        recipeKind,
+        snapshot,
+        createdAt: new Date()
       }
-    }
+    })
 
-    const user = await ensureUser(openid)
-    const savedRecipes = Array.isArray(user.savedRecipes) ? user.savedRecipes : []
-    const hasFavorited = savedRecipes.includes(recipeId)
+    await applyFavoriteDelta(openid, recipeKind === 'menu' ? recipeId : '', 1)
 
-    if (hasFavorited) {
-      await db.collection('users').doc(openid).update({
-        data: {
-          savedRecipes: _.pull(recipeId)
-        }
-      })
-    } else {
-      await db.collection('users').doc(openid).update({
-        data: {
-          savedRecipes: _.push(recipeId)
-        }
-      })
-    }
-
-    const latestUser = await db.collection('users').doc(openid).get()
-
-    return {
-      success: true,
-      recipeId,
-      isFavorited: !hasFavorited,
-      savedRecipes: Array.isArray(latestUser.data?.savedRecipes) ? latestUser.data.savedRecipes : []
-    }
+    return { success: true, isFavorited: true, recipeId, recipeKind }
   } catch (error) {
     return {
       success: false,

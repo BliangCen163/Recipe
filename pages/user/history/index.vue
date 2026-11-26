@@ -2,7 +2,7 @@
 	<view class="page">
 		<view class="header">
 			<text class="header__title">浏览历史</text>
-			<text v-if="history.length > 0" class="header__clear" @click="clearHistory">清空</text>
+			<text v-if="items.length > 0" class="header__clear" @click="clearHistory">清空</text>
 		</view>
 
 		<view v-if="isLoading" class="status">
@@ -13,7 +13,7 @@
 			<text class="status__text">请先完成微信登录后查看浏览历史</text>
 		</view>
 
-		<view v-else-if="history.length === 0" class="empty">
+		<view v-else-if="items.length === 0" class="empty">
 			<view class="empty__icon">
 				<text class="empty__icon-text">🕒</text>
 			</view>
@@ -23,8 +23,8 @@
 
 		<view v-else class="list">
 			<view
-				v-for="item in history"
-				:key="`${item.source}-${item.recipeId}`"
+				v-for="item in items"
+				:key="item.historyId"
 				class="history-item"
 				@click="goToDetail(item)"
 			>
@@ -43,45 +43,75 @@
 					<text class="history-item__arrow">›</text>
 				</view>
 			</view>
+
+			<text v-if="isLoadingMore" class="list__more">加载中...</text>
+			<text v-else-if="hasMore" class="list__more">上拉加载更多</text>
 		</view>
 	</view>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onReachBottom, onShow } from '@dcloudio/uni-app'
 import { userStore } from '../../../stores/user'
 
-const history = ref([])
-const isLoading = ref(true)
+const PAGE_SIZE = 20
 
-const loadHistory = async () => {
+const items = ref([])
+const total = ref(0)
+const hasMore = ref(false)
+const isLoading = ref(true)
+const isLoadingMore = ref(false)
+const page = ref(0)
+
+const loadHistory = async (reset = true) => {
 	if (!userStore.openid) {
-		history.value = []
+		items.value = []
+		total.value = 0
+		hasMore.value = false
 		isLoading.value = false
 		return
 	}
 
-	isLoading.value = true
+	if (!reset && (isLoadingMore.value || !hasMore.value)) return
+
+	const targetPage = reset ? 1 : page.value + 1
+
+	if (reset) {
+		isLoading.value = true
+	} else {
+		isLoadingMore.value = true
+	}
+
 	try {
 		const { result } = await wx.cloud.callFunction({
-			name: 'getViewHistory'
+			name: 'getViewHistory',
+			data: { page: targetPage, pageSize: PAGE_SIZE }
 		})
 
 		if (!result?.success) {
 			throw new Error(result?.errorMessage || '获取浏览历史失败')
 		}
 
-		history.value = Array.isArray(result.history) ? result.history : []
+		const nextItems = Array.isArray(result.items) ? result.items : []
+		items.value = reset ? nextItems : items.value.concat(nextItems)
+		total.value = Number(result.total) || 0
+		hasMore.value = !!result.hasMore
+		page.value = targetPage
 	} catch (error) {
 		console.error('[history] load failed:', error)
-		history.value = []
+		if (reset) {
+			items.value = []
+			total.value = 0
+			hasMore.value = false
+		}
 		uni.showToast({
 			title: error.message || '获取浏览历史失败',
 			icon: 'none'
 		})
 	} finally {
 		isLoading.value = false
+		isLoadingMore.value = false
 	}
 }
 
@@ -102,7 +132,9 @@ const clearHistory = () => {
 					throw new Error(result?.errorMessage || '清空失败')
 				}
 
-				history.value = []
+				items.value = []
+				total.value = 0
+				hasMore.value = false
 				uni.showToast({
 					title: '已清空',
 					icon: 'success'
@@ -131,7 +163,7 @@ const deleteHistoryItem = (item) => {
 					name: 'clearViewHistory',
 					data: {
 						recipeId: item.recipeId,
-						source: item.source || ''
+						recipeKind: item.recipeKind
 					}
 				})
 
@@ -139,14 +171,16 @@ const deleteHistoryItem = (item) => {
 					throw new Error(result?.errorMessage || '删除失败')
 				}
 
-				history.value = Array.isArray(result.history)
-					? result.history
-					: history.value.filter((historyItem) => !(historyItem.recipeId === item.recipeId && historyItem.source === item.source))
-
+				items.value = items.value.filter((historyItem) => historyItem.historyId !== item.historyId)
+				total.value = Math.max(0, total.value - 1)
 				uni.showToast({
 					title: '已删除',
 					icon: 'success'
 				})
+
+				if (items.value.length === 0 && hasMore.value) {
+					loadHistory(true)
+				}
 			} catch (error) {
 				uni.showToast({
 					title: error.message || '删除失败',
@@ -158,7 +192,12 @@ const deleteHistoryItem = (item) => {
 }
 
 const goToDetail = (item) => {
-	const sourceQuery = item.source && item.source !== 'recipes' ? `&source=${item.source}` : ''
+	const sourceQuery = item.recipeKind === 'menu'
+		? '&source=menu'
+		: item.recipeKind === 'original'
+			? '&source=original_recipes'
+			: ''
+
 	uni.navigateTo({
 		url: `/pages/recipe-detail/index?recipeId=${item.recipeId}${sourceQuery}`
 	})
@@ -197,7 +236,13 @@ const formatTime = (value) => {
 }
 
 onShow(() => {
-	loadHistory()
+	loadHistory(true)
+})
+
+onReachBottom(() => {
+	if (hasMore.value) {
+		loadHistory(false)
+	}
 })
 </script>
 
@@ -273,6 +318,14 @@ onShow(() => {
 
 .list {
 	padding: 12rpx 24rpx 24rpx;
+
+	&__more {
+		display: block;
+		margin-top: 20rpx;
+		text-align: center;
+		font-size: 24rpx;
+		color: #9aa0a6;
+	}
 }
 
 .history-item {

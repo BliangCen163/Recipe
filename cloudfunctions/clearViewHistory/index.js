@@ -7,8 +7,6 @@ const db = cloud.database()
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
-  const recipeId = String(event?.recipeId || '').trim()
-  const source = String(event?.source || '').trim()
 
   if (!openid) {
     return {
@@ -17,43 +15,41 @@ exports.main = async (event) => {
     }
   }
 
+  const recipeId = String(event.recipeId || '').trim()
+
   try {
-    const userRef = db.collection('users').doc(openid)
+    const history = db.collection('history')
+    let removed = 0
 
     if (recipeId) {
-      const { data } = await userRef.get()
-      const historyRecipes = Array.isArray(data?.historyRecipes) ? data.historyRecipes : []
-      const nextHistory = historyRecipes.filter((item) => {
-        const sameRecipe = item?.recipeId === recipeId
-        const sameSource = source ? item?.source === source : true
-        return !(sameRecipe && sameSource)
-      })
-
-      await userRef.update({
-        data: {
-          historyRecipes: nextHistory
-        }
-      })
-
-      return {
-        success: true,
-        history: nextHistory
-      }
+      const result = await history
+        .doc(`${openid}_${recipeId}`)
+        .remove()
+        .catch(() => null)
+      removed = result && result.stats ? result.stats.removed || 0 : result ? 1 : 0
+    } else {
+      const result = await history.where({ openid }).remove()
+      removed = result && result.stats ? result.stats.removed || 0 : 0
     }
 
-    await userRef.update({
-      data: {
-        historyRecipes: []
-      }
-    })
+    const countResult = await history.where({ openid }).count()
+
+    await db
+      .collection('users')
+      .doc(openid)
+      .update({
+        data: { 'stats.historyCount': countResult.total || 0 }
+      })
+      .catch(() => null)
 
     return {
-      success: true
+      success: true,
+      removed
     }
   } catch (error) {
     return {
       success: false,
-      errorMessage: error.message || '清空浏览历史失败'
+      errorMessage: error.message || '清除浏览历史失败'
     }
   }
 }

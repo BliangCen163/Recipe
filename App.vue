@@ -75,9 +75,13 @@
 						openid,
 						userId: res.result.userId || openid,
 						nickname: res.result.nickname || '美食爱好者',
-						avatarUrl: res.result.avatarUrl || ''
+						avatarUrl: res.result.avatarUrl || '',
+						prefs: res.result.prefs || {}
 					})
-					userStore.setSavedRecipes(res.result.savedRecipes || [])
+
+					if (res.result.prefs && res.result.prefs.aiBackend) {
+						uni.setStorageSync('aiBackend', res.result.prefs.aiBackend)
+					}
 					console.log('[login] login success:', openid)
 				} catch (e) {
 					console.error('[login] cloud login failed:', e)

@@ -1,5 +1,7 @@
 import { reactive } from 'vue'
 
+const DEFAULT_PREFS = { aiBackend: 'cloudbase' }
+
 export const userStore = reactive({
 	openid: '',
 	userId: '',
@@ -9,15 +11,15 @@ export const userStore = reactive({
 	loginReady: false,
 	loginLoading: false,
 	loginError: '',
-	savedRecipes: [],
+	prefs: Object.assign({}, DEFAULT_PREFS),
 
 	setUser(data) {
 		this.openid = data.openid || ''
 		this.userId = data.userId || data.openid || ''
 		this.nickname = data.nickname || data.nickName || ''
 		this.avatarUrl = data.avatarUrl || ''
+		this.prefs = Object.assign({}, DEFAULT_PREFS, data.prefs || {})
 		this.isLoggedIn = !!data.openid
-		this.savedRecipes = Array.isArray(data.savedRecipes) ? data.savedRecipes : this.savedRecipes
 		this.loginReady = true
 		this.loginLoading = false
 		this.loginError = ''
@@ -28,8 +30,8 @@ export const userStore = reactive({
 		this.avatarUrl = avatarUrl || this.avatarUrl
 	},
 
-	setSavedRecipes(savedRecipes) {
-		this.savedRecipes = Array.isArray(savedRecipes) ? savedRecipes : []
+	setPrefs(prefs) {
+		this.prefs = Object.assign({}, this.prefs, prefs || {})
 	},
 
 	setLoginPending() {
@@ -44,7 +46,7 @@ export const userStore = reactive({
 		this.nickname = ''
 		this.avatarUrl = ''
 		this.isLoggedIn = false
-		this.savedRecipes = []
+		this.prefs = Object.assign({}, DEFAULT_PREFS)
 		this.loginReady = true
 		this.loginLoading = false
 		this.loginError = errorMessage
@@ -59,6 +61,6 @@ export const userStore = reactive({
 		this.loginReady = true
 		this.loginLoading = false
 		this.loginError = ''
-		this.savedRecipes = []
+		this.prefs = Object.assign({}, DEFAULT_PREFS)
 	}
 })

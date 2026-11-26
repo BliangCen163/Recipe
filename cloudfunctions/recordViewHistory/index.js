@@ -3,37 +3,19 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
 const db = cloud.database()
-const MAX_HISTORY_COUNT = 50
 
-async function ensureUser(openid) {
-  const userRef = db.collection('users').doc(openid)
-  const doc = await userRef.get().catch(() => null)
+const MAX_HISTORY_COUNT = 100
+const TRIM_BATCH = 50
 
-  if (!doc || !doc.data) {
-    await userRef.set({
-      data: {
-        openid,
-        nickname: '美食爱好者',
-        avatarUrl: '',
-        savedRecipes: [],
-        shoppingList: [],
-        historyRecipes: [],
-        createdAt: db.serverDate()
-      }
-    })
-
-    return {
-      historyRecipes: []
-    }
-  }
-
-  return doc.data
+function normalizeKind(value) {
+  if (value === 'menu') return 'menu'
+  if (value === 'original_recipes' || value === 'original') return 'original'
+  return 'recipe'
 }
 
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
-  const recipe = event.recipe || {}
 
   if (!openid) {
     return {
@@ -42,7 +24,12 @@ exports.main = async (event) => {
     }
   }
 
-  const recipeId = String(recipe.recipeId || '').trim()
+  const recipe = event.recipe || {}
+  const recipeId = String(recipe.recipeId || event.recipeId || '').trim()
+  const recipeKind = normalizeKind(recipe.recipeKind || recipe.source || event.recipeKind)
+  const title = String(recipe.title || event.title || '').trim() || '未知菜谱'
+  const cover = String(recipe.cover || event.cover || '').trim()
+
   if (!recipeId) {
     return {
       success: false,
@@ -51,31 +38,55 @@ exports.main = async (event) => {
   }
 
   try {
-    const user = await ensureUser(openid)
-    let historyRecipes = Array.isArray(user.historyRecipes) ? [...user.historyRecipes] : []
+    const history = db.collection('history')
 
-    historyRecipes = historyRecipes.filter((item) => !(item.recipeId === recipeId && item.source === recipe.source))
-    historyRecipes.unshift({
-      recipeId,
-      title: String(recipe.title || '未知菜谱').trim(),
-      cover: String(recipe.cover || '').trim(),
-      source: String(recipe.source || 'recipes').trim() || 'recipes',
-      viewedAt: new Date()
-    })
-
-    if (historyRecipes.length > MAX_HISTORY_COUNT) {
-      historyRecipes = historyRecipes.slice(0, MAX_HISTORY_COUNT)
-    }
-
-    await db.collection('users').doc(openid).update({
+    // openid + recipeId 固定文档 id：同一道菜只保留一条，重复浏览即置顶
+    await history.doc(`${openid}_${recipeId}`).set({
       data: {
-        historyRecipes
+        _openid: openid,
+        openid,
+        recipeId,
+        recipeKind,
+        title,
+        cover,
+        viewedAt: new Date()
       }
     })
 
+    const countResult = await history.where({ openid }).count()
+    const total = countResult.total || 0
+    let removed = 0
+
+    if (total > MAX_HISTORY_COUNT) {
+      const overflow = Math.min(total - MAX_HISTORY_COUNT, TRIM_BATCH)
+      const { data: stale } = await history
+        .where({ openid })
+        .orderBy('viewedAt', 'asc')
+        .limit(overflow)
+        .get()
+
+      for (const doc of stale || []) {
+        await history
+          .doc(doc._id)
+          .remove()
+          .catch(() => null)
+        removed += 1
+      }
+    }
+
+    await db
+      .collection('users')
+      .doc(openid)
+      .update({
+        data: { 'stats.historyCount': Math.min(total - removed, MAX_HISTORY_COUNT) }
+      })
+      .catch(() => null)
+
     return {
       success: true,
-      history: historyRecipes
+      recipeId,
+      recipeKind,
+      count: total - removed
     }
   } catch (error) {
     return {

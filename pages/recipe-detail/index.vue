@@ -37,16 +37,69 @@
 			<view class="card">
 				<view class="section-header">
 					<text class="section-header__title">食材清单</text>
-					<text class="section-header__sub">精准分量更容易成功</text>
+					<text class="section-header__sub">份数可调，选好直接进采购单</text>
 				</view>
+
+				<view class="servings">
+					<text class="servings__label">份数</text>
+					<view class="servings__stepper">
+						<view
+							class="servings__btn"
+							:class="{ 'servings__btn--disabled': servings <= 1 }"
+							@click="decreaseServings"
+						>
+							<text class="servings__btn-text">−</text>
+						</view>
+						<text class="servings__value">{{ servings }} 份</text>
+						<view
+							class="servings__btn"
+							:class="{ 'servings__btn--disabled': servings >= 10 }"
+							@click="increaseServings"
+						>
+							<text class="servings__btn-text">＋</text>
+						</view>
+					</view>
+				</view>
+
 				<view class="ingredient-list">
 					<view
-						v-for="item in recipe.ingredients"
-						:key="`${item.name}-${item.amount}`"
+						v-for="(item, index) in scaledIngredients"
+						:key="item.key"
 						class="ingredient-item"
+						@click="toggleIngredient(index, item.name)"
 					>
+						<view
+							class="ingredient-item__check"
+							:class="{ 'ingredient-item__check--active': isIngredientSelected(index, item.name) }"
+						>
+							<text
+								v-if="isIngredientSelected(index, item.name)"
+								class="ingredient-item__tick"
+							>✓</text>
+						</view>
 						<text class="ingredient-item__name">{{ item.name }}</text>
 						<text class="ingredient-item__amount">{{ item.amount }}</text>
+					</view>
+				</view>
+
+				<view class="shop-actions">
+					<view
+						v-if="selectedIngredientCount > 0"
+						class="shop-actions__secondary"
+						@click="addIngredientsToShopping('selected')"
+					>
+						<text class="shop-actions__secondary-text">
+							加入已选 {{ selectedIngredientCount }} 项
+						</text>
+					</view>
+					<view
+						class="shop-actions__primary"
+						:class="{ 'shop-actions__primary--busy': addingToShopping }"
+						@click="addIngredientsToShopping('all')"
+					>
+						<text class="shop-actions__primary-text">
+							{{ addingToShopping ? '正在加入...' : '一键加入全部食材' }}
+						</text>
 					</view>
 				</view>
 			</view>
@@ -75,10 +128,30 @@
 								{{ getTimerText(step.stepNum, step.timerMinute) }}
 							</text>
 						</view>
-						<view class="timer__btn" @click="startTimer(step.stepNum, step.timerMinute)">
-							<text class="timer__btn-text">
-								{{ timerState[step.stepNum]?.running ? '重新计时' : '开始倒计时' }}
-							</text>
+						<view class="timer__actions">
+							<view
+								v-if="!timerState[step.stepNum]"
+								class="timer__btn"
+								@click="startTimer(step.stepNum, step.timerMinute)"
+							>
+								<text class="timer__btn-text">开始倒计时</text>
+							</view>
+							<template v-else>
+								<view
+									class="timer__btn timer__btn--ghost"
+									@click="toggleTimerPause(step.stepNum)"
+								>
+									<text class="timer__btn-text">
+										{{ timerState[step.stepNum].running ? '暂停' : '继续' }}
+									</text>
+								</view>
+								<view
+									class="timer__btn timer__btn--danger"
+									@click="cancelTimer(step.stepNum)"
+								>
+									<text class="timer__btn-text">取消计时</text>
+								</view>
+							</template>
 						</view>
 					</view>
 				</view>
@@ -96,15 +169,23 @@
 				</view>
 			</view>
 		</scroll-view>
+
+		<view v-if="shoppingToastVisible" class="shop-toast">
+			<text class="shop-toast__text">已加入采购单</text>
+			<view class="shop-toast__link" @click="goShoppingList">
+				<text class="shop-toast__link-text">去采购单 ›</text>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { userStore } from '../../stores/user'
 import { toggleFavoriteRecipe } from '../../components/code/recipe-detail-toggleFavorite'
 import { createAiTask, waitForAiTask } from '../../utils/ai-task'
+import { scaleAmountText } from '../../utils/recipes'
 
 const recipe = ref({
 	title: '',
@@ -127,6 +208,112 @@ const loadingText = ref('AI 大厨正在起锅烧油')
 const loadingDesc = ref('正在根据你选的食材生成真实菜谱，请稍等片刻。')
 const isPageDisposed = ref(false)
 const hasRecordedHistory = ref(false)
+const servings = ref(1)
+const selectedIngredientKeys = ref({})
+const addingToShopping = ref(false)
+const shoppingToastVisible = ref(false)
+let shoppingToastTimer = null
+
+const ingredientKey = (index, name) => `${index}__${name}`
+
+const isIngredientSelected = (index, name) =>
+	!!selectedIngredientKeys.value[ingredientKey(index, name)]
+
+const toggleIngredient = (index, name) => {
+	const key = ingredientKey(index, name)
+	selectedIngredientKeys.value = Object.assign({}, selectedIngredientKeys.value, {
+		[key]: !selectedIngredientKeys.value[key]
+	})
+}
+
+const scaledIngredients = computed(() =>
+	(Array.isArray(recipe.value.ingredients) ? recipe.value.ingredients : []).map((item, index) => ({
+		key: ingredientKey(index, item.name),
+		name: item.name || '食材',
+		amount: scaleAmountText(item.amount || '', servings.value)
+	}))
+)
+
+const selectedIngredientCount = computed(
+	() => scaledIngredients.value.filter((item, index) => isIngredientSelected(index, item.name)).length
+)
+
+const increaseServings = () => {
+	if (servings.value >= 10) return
+	servings.value += 1
+}
+
+const decreaseServings = () => {
+	if (servings.value <= 1) return
+	servings.value -= 1
+}
+
+const hideShoppingToast = () => {
+	if (shoppingToastTimer) {
+		clearTimeout(shoppingToastTimer)
+		shoppingToastTimer = null
+	}
+	shoppingToastVisible.value = false
+}
+
+const showShoppingToast = () => {
+	hideShoppingToast()
+	shoppingToastVisible.value = true
+	shoppingToastTimer = setTimeout(() => {
+		shoppingToastVisible.value = false
+		shoppingToastTimer = null
+	}, 4000)
+}
+
+const goShoppingList = () => {
+	hideShoppingToast()
+	uni.navigateTo({ url: '/pages/shopping-list/index' })
+}
+
+const addIngredientsToShopping = async (mode) => {
+	if (addingToShopping.value) return
+
+	if (!userStore.openid) {
+		uni.showToast({ title: '登录状态准备中，请稍后再试', icon: 'none' })
+		return
+	}
+
+	const source = scaledIngredients.value
+	const picked = mode === 'all'
+		? source
+		: source.filter((item, index) => isIngredientSelected(index, item.name))
+
+	if (!picked.length) {
+		uni.showToast({ title: mode === 'all' ? '暂无可加入的食材' : '请先勾选食材', icon: 'none' })
+		return
+	}
+
+	addingToShopping.value = true
+
+	try {
+		const { result } = await wx.cloud.callFunction({
+			name: 'manageShoppingList',
+			data: {
+				action: 'append',
+				recipeId: recipeId.value,
+				recipeTitle: recipe.value.title,
+				servings: servings.value,
+				ingredients: picked.map((item) => ({ name: item.name, amount: item.amount }))
+			}
+		})
+
+		if (!result?.success) {
+			throw new Error(result?.errorMessage || '加入采购单失败')
+		}
+
+		selectedIngredientKeys.value = {}
+		showShoppingToast()
+	} catch (error) {
+		uni.showToast({ title: error.message || '加入采购单失败', icon: 'none' })
+	} finally {
+		addingToShopping.value = false
+	}
+}
 
 const getPreferredBackend = () => {
 	try {
@@ -187,7 +374,7 @@ const recordViewHistory = async () => {
 		return
 	}
 
-	const source = isFromOriginalRecipes.value ? 'original_recipes' : (isFromMenu.value ? 'menu' : 'recipes')
+	const recipeKind = isFromOriginalRecipes.value ? 'original' : (isFromMenu.value ? 'menu' : 'recipe')
 
 	try {
 		await wx.cloud.callFunction({
@@ -197,7 +384,7 @@ const recordViewHistory = async () => {
 					recipeId: recipeId.value,
 					title: recipe.value.title,
 					cover: recipe.value.cover || '',
-					source
+					recipeKind
 				}
 			}
 		})
@@ -254,6 +441,7 @@ const loadFromMenu = async (id) => {
 		}
 
 		recipe.value = {
+			_id: id,
 			title: data.title || '菜谱详情',
 			tags: Array.isArray(data.tags) ? data.tags : [],
 			ingredients: Array.isArray(data.ingredients) ? data.ingredients : [],
@@ -359,23 +547,18 @@ const checkFavoriteStatus = async () => {
 	}
 
 	try {
-		const db = wx.cloud.database()
-		const { data: user } = await db.collection('users').doc(userStore.openid).get()
-		const savedRecipes = Array.isArray(user?.savedRecipes) ? user.savedRecipes : []
-		isFavorited.value = savedRecipes.includes(recipeId.value)
+		const { result } = await wx.cloud.callFunction({
+			name: 'getFavorites',
+			data: { recipeId: recipeId.value }
+		})
 
-		if (!isFavorited.value && isFromMenu.value) {
-			const { data: matched } = await db.collection('recipes')
-				.where({ sourceMenuId: recipeId.value })
-				.limit(1)
-				.get()
-			if (matched.length > 0) {
-				const matchedRecipeId = matched[0]._id
-				isFavorited.value = savedRecipes.includes(matchedRecipeId)
-			}
+		if (!result?.success) {
+			throw new Error(result?.errorMessage || '读取收藏失败')
 		}
+
+		isFavorited.value = !!result.favorited
 	} catch (e) {
-		isFavorited.value = false
+		console.warn('[recipe-detail] checkFavoriteStatus failed:', e?.message || e)
 	}
 }
 
@@ -391,18 +574,14 @@ const toggleFavorite = async () => {
 
 	try {
 		uni.showLoading({ title: '收藏中...' })
-		const sourceMenuId = isFromMenu.value ? recipeId.value : ''
-		const result = await toggleFavoriteRecipe(recipe.value, isFromMenu.value, sourceMenuId)
+		const recipeKind = isFromOriginalRecipes.value ? 'original' : (isFromMenu.value ? 'menu' : 'recipe')
+		const result = await toggleFavoriteRecipe(recipe.value, recipeKind)
 
 		if (!result?.success) {
 			throw new Error(result?.errorMessage || '收藏操作失败')
 		}
 
-		recipeId.value = result.recipeId || recipeId.value
-		recipe.value._id = recipeId.value
 		isFavorited.value = !!result.isFavorited
-		isFromMenu.value = false
-		userStore.setSavedRecipes(result.savedRecipes || [])
 
 		uni.showToast({
 			title: isFavorited.value ? '已收藏' : '已取消收藏',
@@ -418,17 +597,20 @@ const toggleFavorite = async () => {
 	}
 }
 
-const startTimer = (stepNum, minute) => {
-	const totalSeconds = Number(minute) * 60
-	if (!totalSeconds) return
+const stopTimer = (stepNum) => {
+	const handler = timerHandlers.get(stepNum)
+	if (!handler) return
+	clearInterval(handler)
+	timerHandlers.delete(stepNum)
+}
 
-	if (timerHandlers.has(stepNum)) {
-		clearInterval(timerHandlers.get(stepNum))
-		timerHandlers.delete(stepNum)
-	}
+const runTimer = (stepNum) => {
+	const state = timerState[stepNum]
+	if (!state) return
 
+	stopTimer(stepNum)
 	timerState[stepNum] = {
-		remainingSeconds: totalSeconds,
+		remainingSeconds: state.remainingSeconds,
 		running: true
 	}
 
@@ -437,12 +619,8 @@ const startTimer = (stepNum, minute) => {
 		if (!current) return
 
 		if (current.remainingSeconds <= 1) {
-			clearInterval(handler)
-			timerHandlers.delete(stepNum)
-			timerState[stepNum] = {
-				remainingSeconds: 0,
-				running: false
-			}
+			stopTimer(stepNum)
+			delete timerState[stepNum]
 			uni.vibrateLong()
 			uni.showModal({
 				title: '时间到',
@@ -459,6 +637,39 @@ const startTimer = (stepNum, minute) => {
 	}, 1000)
 
 	timerHandlers.set(stepNum, handler)
+}
+
+const startTimer = (stepNum, minute) => {
+	const totalSeconds = Number(minute) * 60
+	if (!totalSeconds) return
+
+	stopTimer(stepNum)
+	timerState[stepNum] = {
+		remainingSeconds: totalSeconds,
+		running: true
+	}
+	runTimer(stepNum)
+}
+
+const toggleTimerPause = (stepNum) => {
+	const state = timerState[stepNum]
+	if (!state) return
+
+	if (state.running) {
+		stopTimer(stepNum)
+		timerState[stepNum] = {
+			remainingSeconds: state.remainingSeconds,
+			running: false
+		}
+		return
+	}
+
+	runTimer(stepNum)
+}
+
+const cancelTimer = (stepNum) => {
+	stopTimer(stepNum)
+	delete timerState[stepNum]
 }
 
 const getTimerText = (stepNum, minute) => {
@@ -495,6 +706,7 @@ onLoad((options) => {
 onUnload(() => {
 	isPageDisposed.value = true
 	clearAllTimers()
+	hideShoppingToast()
 })
 
 watch(
@@ -695,10 +907,60 @@ watch(
 	gap: 18rpx;
 }
 
-.ingredient-item {
+.servings {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	padding: 18rpx 24rpx;
+	margin-bottom: 8rpx;
+	background: #fff6f1;
+	border-radius: 16rpx;
+
+	&__label {
+		font-size: 26rpx;
+		color: #7a5a50;
+	}
+
+	&__stepper {
+		display: flex;
+		align-items: center;
+		gap: 20rpx;
+	}
+
+	&__btn {
+		width: 52rpx;
+		height: 52rpx;
+		border-radius: 50%;
+		background: #ffffff;
+		border: 1rpx solid #ffd9cb;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		&--disabled {
+			opacity: 0.35;
+		}
+	}
+
+	&__btn-text {
+		font-size: 30rpx;
+		color: $primary-color;
+		line-height: 1;
+	}
+
+	&__value {
+		min-width: 96rpx;
+		text-align: center;
+		font-size: 28rpx;
+		font-weight: 600;
+		color: #2d3136;
+	}
+}
+
+.ingredient-item {
+	display: flex;
+	align-items: center;
+	gap: 16rpx;
 	padding: 20rpx 0;
 	border-bottom: 1rpx solid #f0f1f3;
 
@@ -707,7 +969,33 @@ watch(
 		padding-bottom: 0;
 	}
 
+	&__check {
+		width: 36rpx;
+		height: 36rpx;
+		border-radius: 50%;
+		border: 2rpx solid #d7dae0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		transition: all 0.2s ease;
+
+		&--active {
+			background: $primary-color;
+			border-color: $primary-color;
+		}
+	}
+
+	&__tick {
+		font-size: 20rpx;
+		color: #ffffff;
+		font-weight: 700;
+		line-height: 1;
+	}
+
 	&__name {
+		flex: 1;
+		min-width: 0;
 		font-size: 28rpx;
 		color: #2d3136;
 	}
@@ -716,6 +1004,79 @@ watch(
 		font-size: 26rpx;
 		color: $primary-color;
 		font-weight: 600;
+	}
+}
+
+.shop-actions {
+	margin-top: 28rpx;
+	display: flex;
+	flex-direction: column;
+	gap: 16rpx;
+
+	&__secondary {
+		height: 76rpx;
+		border-radius: 999rpx;
+		background: #fff2ec;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	&__secondary-text {
+		font-size: 26rpx;
+		font-weight: 600;
+		color: #c2553a;
+	}
+
+	&__primary {
+		height: 88rpx;
+		border-radius: 999rpx;
+		background: $primary-color;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 8rpx 20rpx rgba(250, 102, 80, 0.18);
+
+		&--busy {
+			opacity: 0.7;
+		}
+	}
+
+	&__primary-text {
+		font-size: 28rpx;
+		font-weight: 600;
+		color: #ffffff;
+	}
+}
+
+.shop-toast {
+	position: fixed;
+	left: 50%;
+	bottom: calc(48rpx + env(safe-area-inset-bottom));
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 20rpx;
+	padding: 20rpx 32rpx;
+	background: rgba(31, 35, 41, 0.92);
+	border-radius: 999rpx;
+	z-index: 30;
+
+	&__text {
+		font-size: 26rpx;
+		color: #ffffff;
+	}
+
+	&__link {
+		padding: 6rpx 18rpx;
+		border-radius: 999rpx;
+		background: rgba(255, 255, 255, 0.16);
+	}
+
+	&__link-text {
+		font-size: 26rpx;
+		font-weight: 600;
+		color: #ffd3c6;
 	}
 }
 
@@ -792,11 +1153,35 @@ watch(
 		color: #2d3136;
 	}
 
+	&__actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 12rpx;
+		flex-shrink: 0;
+	}
+
 	&__btn {
 		padding: 18rpx 24rpx;
 		border-radius: 999rpx;
 		background: $primary-color;
 		flex-shrink: 0;
+	}
+
+	&__btn--ghost {
+		background: #ffe3da;
+	}
+
+	&__btn--ghost .timer__btn-text {
+		color: #b94a2b;
+	}
+
+	&__btn--danger {
+		background: #f1f2f4;
+	}
+
+	&__btn--danger .timer__btn-text {
+		color: #b42318;
 	}
 
 	&__btn-text {

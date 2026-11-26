@@ -925,6 +925,8 @@ async function saveRecipe(normalized, createdBy, sourceIngredients, mealPlanMeta
 	const payload = {
 		...normalized,
 		sourceIngredients,
+		_openid: createdBy || '',
+		visibility: 'private',
 		createdBy,
 		createdAt: new Date(),
 		taskId: taskId || ''

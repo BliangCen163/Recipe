@@ -87,6 +87,7 @@ exports.main = async (event) => {
 			cover,
 			image: cover,
 			author: '我的自创',
+			_openid: openid,
 			createdBy: openid,
 			openid,
 			isOriginal: true,

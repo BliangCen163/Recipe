@@ -28,7 +28,7 @@
 					placeholder="点击填写昵称"
 					@blur="onNicknameBlur"
 				/>
-				<text class="header__status">{{ statusText }}</text>
+				<text class="header__status" @click="onStatusTap">{{ statusText }}</text>
 				<text class="header__hint">{{ hintText }}</text>
 			</view>
 		</view>
@@ -61,7 +61,7 @@
 			<text class="shortcut-card__arrow">›</text>
 		</view>
 
-		<view class="shortcut-card shortcut-card--accent" @click="goToPersonalRecipes">
+		<view class="shortcut-card" @click="goToPersonalRecipes">
 			<text class="shortcut-card__icon">🍳</text>
 			<view class="shortcut-card__body">
 				<text class="shortcut-card__title">个人菜谱</text>
@@ -79,44 +79,13 @@
 			<text class="shortcut-card__arrow">›</text>
 		</view>
 
-		<view v-if="isLoading || !userStore.loginReady" class="loading">
-			<text class="loading__text">加载中...</text>
-			<text class="loading__retry" @click="retryLogin">微信登录</text>
-		</view>
-
-		<view v-else-if="savedRecipes.length === 0" class="empty">
-			<view class="empty__icon">
-				<text class="empty__icon-text">♥</text>
+		<view class="shortcut-card shortcut-card--accent" @click="goToRecipeFavorites">
+			<text class="shortcut-card__icon">♥</text>
+			<view class="shortcut-card__body">
+				<text class="shortcut-card__title">菜谱收藏</text>
+				<text class="shortcut-card__desc">查看你收藏过的菜谱</text>
 			</view>
-			<text class="empty__title">还没有收藏菜谱</text>
-			<text class="empty__desc">{{ emptyDescription }}</text>
-			<text v-if="!userStore.isLoggedIn" class="empty__retry" @click="retryLogin">微信登录</text>
-		</view>
-
-		<view v-else class="list">
-			<view class="list__header">
-				<text class="list__title">我的收藏</text>
-			</view>
-			<view
-				v-for="item in savedRecipes"
-				:key="item._id"
-				class="recipe-item"
-				@click="goToDetail(item)"
-			>
-				<image v-if="item.cover" class="recipe-item__cover" :src="item.cover" mode="aspectFill" />
-				<view class="recipe-item__body">
-					<text class="recipe-item__title">{{ item.title }}</text>
-					<view class="recipe-item__tags">
-						<text v-for="tag in item.tags" :key="tag" class="recipe-item__tag">{{ tag }}</text>
-					</view>
-					<text class="recipe-item__ingredients">
-						{{ (item.sourceIngredients || item.ingredients.map((ingredient) => ingredient.name)).join('、') }}
-					</text>
-				</view>
-				<view class="recipe-item__fav">
-					<text class="recipe-item__fav-icon">♥</text>
-				</view>
-			</view>
+			<text class="shortcut-card__arrow">›</text>
 		</view>
 	</view>
 </template>
@@ -126,12 +95,9 @@ import { computed, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { userStore } from '../../stores/user'
 
-const savedRecipes = ref([])
-const isLoading = ref(true)
 const isSavingAvatar = ref(false)
 const isSavingNickname = ref(false)
 const nickname = ref('')
-const hasLoadedProfile = ref(false)
 const aiBackend = ref('cloudbase')
 
 const backendOptions = [
@@ -146,8 +112,6 @@ const backendOptions = [
 		desc: '走本地 Worker / Ollama'
 	}
 ]
-
-const db = wx.cloud.database()
 
 const loadAiBackend = () => {
 	try {
@@ -169,8 +133,8 @@ const displayName = computed(() => {
 const statusText = computed(() => {
 	if (userStore.isLoggedIn) return '尊贵的用户，欢迎回来'
 	if (userStore.loginLoading) return '正在为你准备登录状态...'
-	if (userStore.loginError) return '未登录，点击下方按钮重新发起微信登录'
-	return '未登录'
+	if (userStore.loginError) return '未登录，点击这里重新发起微信登录'
+	return '未登录，点击这里重新发起微信登录'
 })
 
 const hintText = computed(() => {
@@ -178,70 +142,6 @@ const hintText = computed(() => {
 	if (isSavingNickname.value) return '昵称保存中，请稍候'
 	return '点击头像或昵称即可修改资料'
 })
-
-const emptyDescription = computed(() => {
-	if (userStore.isLoggedIn) {
-		return '去首页或剩菜盲盒生成菜谱后收藏吧'
-	}
-
-	if (userStore.loginError) {
-		return `最近一次登录失败：${userStore.loginError}`
-	}
-
-	return '点击“微信登录”后会重新执行云函数登录。'
-})
-
-const fetchSavedRecipes = async (showSkeleton = true) => {
-	if (!userStore.openid) {
-		savedRecipes.value = []
-		isLoading.value = false
-		hasLoadedProfile.value = true
-		return
-	}
-
-	if (showSkeleton) {
-		isLoading.value = true
-	}
-
-	try {
-		const { data: user } = await db.collection('users').doc(userStore.openid).get()
-		const favoriteIds = Array.isArray(user?.savedRecipes) ? user.savedRecipes : []
-
-		userStore.updateProfile(user?.nickname || user?.nickName || '美食爱好者', user?.avatarUrl || userStore.avatarUrl)
-		userStore.setSavedRecipes(favoriteIds)
-		nickname.value = user?.nickname || user?.nickName || '美食爱好者'
-
-		if (!favoriteIds.length) {
-			savedRecipes.value = []
-			return
-		}
-
-		const batchSize = 10
-		const allRecipes = []
-		for (let i = 0; i < favoriteIds.length; i += batchSize) {
-			const batch = favoriteIds.slice(i, i + batchSize)
-			const { data: batchRecipes } = await db.collection('recipes')
-				.where({ _id: db.command.in(batch) })
-				.get()
-			allRecipes.push(...batchRecipes)
-		}
-
-		const recipeMap = new Map(allRecipes.map((item) => [item._id, item]))
-		savedRecipes.value = favoriteIds.map((id) => recipeMap.get(id)).filter(Boolean)
-	} catch (error) {
-		console.error('[user] fetchSavedRecipes failed:', error)
-		savedRecipes.value = []
-	} finally {
-		isLoading.value = false
-		hasLoadedProfile.value = true
-	}
-}
-
-const goToDetail = (item) => {
-	uni.navigateTo({
-		url: `/pages/recipe-detail/index?recipeId=${item._id}`
-	})
-}
 
 const goToShoppingList = () => {
 	uni.navigateTo({
@@ -258,6 +158,12 @@ const goToPersonalRecipes = () => {
 const goToHistory = () => {
 	uni.navigateTo({
 		url: '/pages/user/history/index'
+	})
+}
+
+const goToRecipeFavorites = () => {
+	uni.navigateTo({
+		url: '/pages/recipe-favorites/recipe-favorites'
 	})
 }
 
@@ -348,13 +254,15 @@ const onNicknameBlur = async (event) => {
 const retryLogin = async () => {
 	const app = getApp()
 	if (app?.globalData?.runSilentLogin) {
-		isLoading.value = true
-		hasLoadedProfile.value = false
-		await app.globalData.runSilentLogin()
-		if (userStore.openid) {
-			await fetchSavedRecipes(true)
-		} else {
-			isLoading.value = false
+		uni.showLoading({ title: '正在重新登录...' })
+		try {
+			await app.globalData.runSilentLogin()
+			uni.showToast({
+				title: userStore.openid ? '登录成功' : '登录未完成，请稍后重试',
+				icon: 'none'
+			})
+		} finally {
+			uni.hideLoading()
 		}
 		return
 	}
@@ -362,11 +270,27 @@ const retryLogin = async () => {
 	uni.showToast({ title: '重试入口不可用，请重启小程序', icon: 'none' })
 }
 
+const onStatusTap = () => {
+	if (userStore.isLoggedIn || userStore.loginLoading) return
+	retryLogin()
+}
+
 const setAiBackend = (value) => {
 	if (!value || aiBackend.value === value) return
 
 	aiBackend.value = value
 	uni.setStorageSync('aiBackend', value)
+	userStore.setPrefs({ aiBackend: value })
+
+	if (userStore.openid) {
+		wx.cloud.callFunction({
+			name: 'updateUserProfile',
+			data: { aiBackend: value }
+		}).catch((error) => {
+			console.warn('[user] sync aiBackend failed:', error?.message || error)
+		})
+	}
+
 	uni.showToast({
 		title: value === 'cloudbase' ? '已切换到 CloudBase AI' : '已切换到本地 AI',
 		icon: 'none'
@@ -377,30 +301,14 @@ onShow(() => {
 	loadAiBackend()
 
 	if (userStore.openid) {
-		fetchSavedRecipes(!hasLoadedProfile.value)
-		return
+		nickname.value = userStore.nickname || '美食爱好者'
 	}
-
-	if (!userStore.loginReady) {
-		isLoading.value = true
-		return
-	}
-
-	isLoading.value = false
 })
 
 watch(
 	() => userStore.openid,
 	(value) => {
-		if (value) {
-			nickname.value = userStore.nickname || '美食爱好者'
-			fetchSavedRecipes(!hasLoadedProfile.value)
-			return
-		}
-
-		nickname.value = userStore.nickname || '美食爱好者'
-		savedRecipes.value = []
-		isLoading.value = false
+		nickname.value = value ? userStore.nickname || '美食爱好者' : ''
 	},
 	{ immediate: true }
 )
@@ -409,6 +317,7 @@ watch(
 <style lang="scss" scoped>
 .page {
 	min-height: 100vh;
+	padding-bottom: 48rpx;
 	background-color: $page-bg-color;
 }
 
@@ -595,150 +504,6 @@ watch(
 
 	&--accent {
 		background: linear-gradient(145deg, #fff8f4 0%, #ffffff 100%);
-	}
-}
-
-.loading {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	padding-top: 120rpx;
-	gap: 16rpx;
-
-	&__text {
-		font-size: 28rpx;
-		color: #9aa0a6;
-	}
-
-	&__retry {
-		font-size: 24rpx;
-		color: $primary-color;
-	}
-}
-
-.empty {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	padding-top: 160rpx;
-
-	&__icon {
-		width: 120rpx;
-		height: 120rpx;
-		border-radius: 50%;
-		background: #f7f8fa;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	&__icon-text {
-		font-size: 56rpx;
-		color: #d0d3d9;
-	}
-
-	&__title {
-		margin-top: 28rpx;
-		font-size: 32rpx;
-		font-weight: 600;
-		color: #4e535a;
-	}
-
-	&__desc {
-		margin-top: 12rpx;
-		font-size: 26rpx;
-		color: #9aa0a6;
-		text-align: center;
-		padding: 0 48rpx;
-		line-height: 1.7;
-	}
-
-	&__retry {
-		margin-top: 20rpx;
-		font-size: 24rpx;
-		color: $primary-color;
-	}
-}
-
-.list {
-	padding: 24rpx;
-
-	&__header {
-		margin-bottom: 20rpx;
-	}
-
-	&__title {
-		font-size: 34rpx;
-		font-weight: 700;
-		color: #1f2329;
-	}
-}
-
-.recipe-item {
-	display: flex;
-	align-items: center;
-	gap: 20rpx;
-	background: #FFFFFF;
-	border-radius: 24rpx;
-	padding: 20rpx 24rpx;
-	margin-bottom: 16rpx;
-	box-shadow: 0 4rpx 16rpx rgba(24, 32, 56, 0.06);
-
-	&__cover {
-		width: 120rpx;
-		height: 120rpx;
-		border-radius: 16rpx;
-		flex-shrink: 0;
-	}
-
-	&__body {
-		flex: 1;
-		min-width: 0;
-	}
-
-	&__title {
-		display: block;
-		font-size: 30rpx;
-		font-weight: 600;
-		color: #1f2329;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	&__tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 10rpx;
-		margin-top: 12rpx;
-	}
-
-	&__tag {
-		padding: 6rpx 14rpx;
-		border-radius: 999rpx;
-		font-size: 22rpx;
-		color: #6a4a3c;
-		background: #fff0ea;
-	}
-
-	&__ingredients {
-		display: block;
-		margin-top: 12rpx;
-		font-size: 24rpx;
-		color: #9aa0a6;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	&__fav {
-		margin-left: 20rpx;
-		flex-shrink: 0;
-	}
-
-	&__fav-icon {
-		font-size: 36rpx;
-		color: $primary-color;
 	}
 }
 </style>
