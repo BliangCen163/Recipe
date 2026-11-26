@@ -5,13 +5,12 @@ const DEFAULT_TIMEOUT = 5 * 60 * 1000
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export const createAiTask = async (type, payload, backend = '') => {
+export const createAiTask = async (type, payload) => {
 	const { result } = await wx.cloud.callFunction({
 		name: 'createAiTask',
 		data: {
 			type,
-			payload,
-			backend
+			payload
 		}
 	})
 

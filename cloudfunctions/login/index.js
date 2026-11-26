@@ -6,7 +6,6 @@ const db = cloud.database()
 const _ = db.command
 
 const DEFAULT_NICKNAME = '美食爱好者'
-const DEFAULT_PREFS = { aiBackend: 'cloudbase' }
 const MAX_HISTORY_COUNT = 100
 
 function normalizeKind(source) {
@@ -116,13 +115,13 @@ async function migrateLegacyUser(openid, user) {
     .doc(openid)
     .update({
       data: {
-        prefs: Object.assign({}, DEFAULT_PREFS, user.prefs || {}),
         stats: {
           favoriteCount,
           historyCount: historyItems.length,
           recipeCount: 0
         },
         schemaVersion: 2,
+        prefs: _.remove(),
         savedRecipes: _.remove(),
         shoppingList: _.remove(),
         historyRecipes: _.remove()
@@ -152,7 +151,6 @@ exports.main = async () => {
         openid,
         nickname: DEFAULT_NICKNAME,
         avatarUrl: '',
-        prefs: Object.assign({}, DEFAULT_PREFS),
         stats: { favoriteCount: 0, historyCount: 0, recipeCount: 0 },
         schemaVersion: 2,
         createdAt: now,
@@ -167,8 +165,7 @@ exports.main = async () => {
         openid,
         userId: openid,
         nickname: profile.nickname,
-        avatarUrl: '',
-        prefs: profile.prefs
+        avatarUrl: ''
       }
     }
 
@@ -193,8 +190,7 @@ exports.main = async () => {
       openid,
       userId: openid,
       nickname: user.nickname || DEFAULT_NICKNAME,
-      avatarUrl: user.avatarUrl || '',
-      prefs: Object.assign({}, DEFAULT_PREFS, user.prefs || {})
+      avatarUrl: user.avatarUrl || ''
     }
   } catch (error) {
     return {

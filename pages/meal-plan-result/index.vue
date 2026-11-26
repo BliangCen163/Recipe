@@ -55,18 +55,6 @@ const loadingText = ref('AI 正在为您排兵布阵...')
 const loadingDesc = ref('正在规划一桌荤素搭配合理的菜单，请稍等片刻。')
 const isPageDisposed = ref(false)
 
-const getPreferredBackend = () => {
-	try {
-		const backend = uni.getStorageSync('aiBackend') || 'cloudbase'
-		if (!uni.getStorageSync('aiBackend')) {
-			uni.setStorageSync('aiBackend', backend)
-		}
-		return backend
-	} catch (error) {
-		return 'cloudbase'
-	}
-}
-
 const parseNumber = (value, fallback) => {
 	const parsed = Number(value)
 	return Number.isFinite(parsed) ? parsed : fallback
@@ -90,10 +78,8 @@ const updateLoadingByTask = (task) => {
 	}
 
 	if (task.status === 'processing') {
-		loadingText.value = task.backend === 'cloudbase' ? 'CloudBase AI 正在设计整桌菜单' : '本地 AI 正在设计整桌菜单'
-		loadingDesc.value = task.backend === 'cloudbase'
-			? '云端模型已开始生成多道菜，请稍等片刻。'
-			: '本地模型已开始生成多道菜，请稍等片刻。'
+		loadingText.value = 'CloudBase AI 正在设计整桌菜单'
+		loadingDesc.value = '云端模型已开始生成多道菜，请稍等片刻。'
 	}
 }
 
@@ -128,7 +114,7 @@ const fetchMealPlan = async () => {
 			cuisine: cuisine.value,
 			preferences: preferences.value,
 			availableIngredients: availableIngredients.value
-		}, getPreferredBackend())
+		})
 
 		const finalTask = await waitForAiTask(task.taskId, {
 			onUpdate: updateLoadingByTask,

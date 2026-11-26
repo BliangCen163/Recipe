@@ -49,7 +49,7 @@ const app = cloudbase.init({ env: envId, secretId, secretKey })
 // 有写入风险的函数（clearViewHistory、recordViewHistory、manageShoppingList、updateUserProfile）不探测
 const CHECKS = [
   ['search', { keyword: '番茄', page: 1 }],
-  ['getSavedRecipes', {}],
+  ['getFavorites', {}],
   ['getViewHistory', {}],
   ['getAiTaskStatus', { taskId: '__probe__' }],
   ['createAiTask', { type: '__probe__' }],

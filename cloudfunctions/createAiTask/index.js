@@ -37,18 +37,6 @@ function sanitizeMealPlanPayload(payload) {
   }
 }
 
-function sanitizeRecognizeImagePayload(payload) {
-  const fileID = String(payload.fileID || '').trim()
-
-  if (!fileID) {
-    throw new Error('缺少待识别图片 fileID')
-  }
-
-  return {
-    fileID
-  }
-}
-
 function sanitizePayload(type, payload) {
   const input = payload && typeof payload === 'object' ? payload : {}
 
@@ -60,20 +48,7 @@ function sanitizePayload(type, payload) {
     return sanitizeMealPlanPayload(input)
   }
 
-  if (type === 'recognize_image') {
-    return sanitizeRecognizeImagePayload(input)
-  }
-
   throw new Error('不支持的任务类型')
-}
-
-function sanitizeBackend(value) {
-  const backend = String(value || '').trim()
-  if (backend === 'cloudbase' || backend === 'openai_compatible') {
-    return backend
-  }
-
-  return ''
 }
 
 exports.main = async (event) => {
@@ -88,7 +63,7 @@ exports.main = async (event) => {
     }
   }
 
-  if (!['recipe', 'meal_plan', 'recognize_image'].includes(type)) {
+  if (!['recipe', 'meal_plan'].includes(type)) {
     return {
       success: false,
       errorMessage: '任务类型无效'
@@ -97,21 +72,14 @@ exports.main = async (event) => {
 
   try {
     const payload = sanitizePayload(type, event.payload)
-    const backend = sanitizeBackend(event.backend)
-
-    if (type !== 'recognize_image' && !backend) {
-      throw new Error('请先选择有效的 AI 后端')
-    }
-
     const now = db.serverDate()
 
     const { _id } = await db.collection('ai_tasks').add({
       data: {
         type,
         status: 'pending',
-        backend: backend || 'openai_compatible',
         payload,
-        result: type === 'recognize_image' ? [] : {},
+        result: {},
         resultRefs: {},
         errorMessage: '',
         createdBy: openid,

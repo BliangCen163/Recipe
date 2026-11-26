@@ -6,7 +6,7 @@
 				<text class="hero__badge-text">剩菜盲盒</text>
 			</view>
 			<text class="hero__title">打开冰箱，让 AI 帮你认食材</text>
-			<text class="hero__desc">手动勾选和拍照识别都可以，攒够食材后就去生成一份靠谱又省心的菜谱。</text>
+			<text class="hero__desc">手动勾选或自己补充，攒够食材后就去生成一份靠谱又省心的菜谱。</text>
 		</view>
 
 		<view class="panel">
@@ -34,7 +34,7 @@
 		<view class="panel panel--warm">
 			<view class="section-head">
 				<text class="section-head__title">补充食材</text>
-				<text class="section-head__meta">支持手动输入和智能识图</text>
+				<text class="section-head__meta">支持手动输入与自定义食材</text>
 			</view>
 
 			<text class="custom-input__label">没有找到？自己补充或者拍一张</text>
@@ -50,51 +50,6 @@
 				<view class="custom-input__btn" @click="addCustomIngredient">
 					<text class="custom-input__btn-text">添加</text>
 				</view>
-			</view>
-
-			<view
-				class="vision-btn"
-				:class="{ 'vision-btn--disabled': isRecognizing }"
-				@click="handleSmartRecognize"
-			>
-				<view class="vision-btn__icon-wrap">
-					<text class="vision-btn__icon">📷</text>
-				</view>
-				<view class="vision-btn__content">
-					<text class="vision-btn__title">智能识图</text>
-					<text class="vision-btn__desc">
-						{{ isRecognizing ? 'AI 正在识别图片里的食材' : '拍照上传，一次补全冰箱里的食材' }}
-					</text>
-				</view>
-				<text class="vision-btn__arrow">识别</text>
-			</view>
-
-			<view
-				v-if="recognitionFeedback.visible"
-				class="feedback-card"
-				:class="`feedback-card--${recognitionFeedback.kind}`"
-			>
-				<view class="feedback-card__head">
-					<text class="feedback-card__title">{{ recognitionFeedback.title }}</text>
-					<text class="feedback-card__close" @click="clearRecognitionFeedback">知道了</text>
-				</view>
-				<text class="feedback-card__desc">{{ recognitionFeedback.desc }}</text>
-			</view>
-
-			<view v-if="recognizedIngredients.length" class="detected">
-				<view class="detected__head">
-					<text class="detected__title">本次识别新增</text>
-					<text class="detected__count">{{ recognizedIngredients.length }} 种</text>
-				</view>
-				<TransitionGroup name="ingredient-pop" tag="view" class="detected__tags">
-					<view
-						v-for="item in recognizedIngredients"
-						:key="`recognized-${item}`"
-						class="tag tag--active tag--detected"
-					>
-						<text class="tag__text">{{ item }}</text>
-					</view>
-				</TransitionGroup>
 			</view>
 
 			<TransitionGroup
@@ -137,7 +92,7 @@
 		<view class="bottom-bar">
 			<view class="bottom-bar__info">
 				<text class="bottom-bar__count">已选 {{ allIngredients.length }} 种食材</text>
-				<text class="bottom-bar__hint">识图结果会自动合并进已选列表</text>
+				<text class="bottom-bar__hint">生成菜谱只需一步</text>
 			</view>
 			<view
 				class="bottom-bar__btn"
@@ -152,8 +107,6 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onUnload } from '@dcloudio/uni-app'
-import { createAiTask, getAiTaskStatus } from '../../utils/ai-task'
 
 const POLL_INTERVAL = 2000
 
@@ -167,16 +120,6 @@ const ingredientGroups = ref([
 const selectedIngredients = ref([])
 const customInput = ref('')
 const customIngredients = ref([])
-const recognizedIngredients = ref([])
-const isRecognizing = ref(false)
-const recognitionFeedback = ref({
-	visible: false,
-	kind: 'neutral',
-	title: '',
-	desc: ''
-})
-
-let pollTimer = null
 
 const allIngredients = computed(() => [...selectedIngredients.value, ...customIngredients.value])
 const hasSelected = computed(() => allIngredients.value.length > 0)
@@ -230,7 +173,6 @@ const removeCustomIngredient = (item) => {
 const toggleSelectedIngredient = (item) => {
 	if (selectedIngredients.value.includes(item)) {
 		selectedIngredients.value = selectedIngredients.value.filter((current) => current !== item)
-		recognizedIngredients.value = recognizedIngredients.value.filter((current) => current !== item)
 		return
 	}
 
@@ -240,199 +182,6 @@ const toggleSelectedIngredient = (item) => {
 	}
 
 	selectedIngredients.value.push(item)
-}
-
-const setRecognitionFeedback = ({ kind = 'neutral', title = '', desc = '' }) => {
-	recognitionFeedback.value = {
-		visible: true,
-		kind,
-		title,
-		desc
-	}
-}
-
-const clearRecognitionFeedback = () => {
-	recognitionFeedback.value = {
-		visible: false,
-		kind: 'neutral',
-		title: '',
-		desc: ''
-	}
-}
-
-const isNoFoodDetectedMessage = (message) => (
-	typeof message === 'string' && (
-		message.includes('未识别到食物') ||
-		message.includes('no photo provided') ||
-		message.includes('识图结果不是有效的食材数组')
-	)
-)
-
-const showRecognitionError = (message) => {
-	if (isNoFoodDetectedMessage(message)) {
-		setRecognitionFeedback({
-			kind: 'gentle',
-			title: '未识别到食物',
-			desc: '这张图片里没有识别到可用食材，换一张包含食物主体、光线更清晰的图片再试试。'
-		})
-		return
-	}
-
-	const content = message || '识图失败，请稍后重试'
-	setRecognitionFeedback({
-		kind: 'warning',
-		title: '识图遇到一点问题',
-		desc: content
-	})
-
-	uni.showToast({
-		title: content,
-		icon: 'none'
-	})
-}
-
-const compressImageIfNeeded = async (filePath) => {
-	try {
-		const info = await uni.getImageInfo({ src: filePath })
-		const shouldCompress = (info.width || 0) > 1600 || (info.height || 0) > 1600
-
-		if (!shouldCompress) {
-			return filePath
-		}
-
-		const compressed = await uni.compressImage({
-			src: filePath,
-			quality: 72
-		})
-
-		return compressed?.tempFilePath || filePath
-	} catch (error) {
-		return filePath
-	}
-}
-
-const getFileExtension = (filePath) => {
-	const matched = String(filePath || '').match(/\.([a-zA-Z0-9]+)(?:\?|$)/)
-	return matched?.[1] || 'jpg'
-}
-
-const getPreferredBackend = () => {
-	try {
-		return uni.getStorageSync('aiBackend') || 'openai_compatible'
-	} catch (error) {
-		return 'openai_compatible'
-	}
-}
-
-const mergeRecognizedIngredients = (items) => {
-	const normalized = dedupeIngredients(items.map(normalizeIngredient))
-	if (!normalized.length) {
-		return []
-	}
-
-	const nextSelected = [...selectedIngredients.value]
-	const nextCustom = [...customIngredients.value]
-	const appended = []
-
-	for (const item of normalized) {
-		if (nextSelected.includes(item) || nextCustom.includes(item)) {
-			continue
-		}
-
-		nextSelected.push(item)
-		appended.push(item)
-	}
-
-	selectedIngredients.value = nextSelected
-	customIngredients.value = nextCustom.filter((item) => !nextSelected.includes(item))
-	recognizedIngredients.value = appended
-	return appended
-}
-
-const pollTaskStatus = async (taskId) => {
-	try {
-		const task = await getAiTaskStatus(taskId)
-
-		if (task.status === 'succeeded') {
-			clearPollTimer()
-			const result = Array.isArray(task.result) ? task.result : []
-			const appended = mergeRecognizedIngredients(result)
-			uni.hideLoading()
-			isRecognizing.value = false
-			uni.showToast({
-				title: appended.length ? `识别到 ${appended.length} 种食材` : '未识别到新食材',
-				icon: 'none'
-			})
-			return
-		}
-
-		if (task.status === 'failed') {
-			throw new Error(task.errorMessage || '识图任务失败')
-		}
-
-		pollTimer = setTimeout(() => {
-			pollTaskStatus(taskId)
-		}, POLL_INTERVAL)
-	} catch (error) {
-		clearPollTimer()
-		uni.hideLoading()
-		isRecognizing.value = false
-		showRecognitionError(error.message)
-	}
-}
-
-const handleSmartRecognize = async () => {
-	if (isRecognizing.value) {
-		return
-	}
-
-	try {
-		const mediaList = await uni.chooseMedia({
-			count: 1,
-			mediaType: ['image'],
-			sourceType: ['camera', 'album'],
-			sizeType: ['compressed']
-		})
-
-		const filePath = mediaList?.tempFiles?.[0]?.tempFilePath
-		if (!filePath) {
-			return
-		}
-
-		isRecognizing.value = true
-		recognizedIngredients.value = []
-		clearRecognitionFeedback()
-		uni.showLoading({
-			title: 'AI 识图中...',
-			mask: true
-		})
-
-		const preparedFilePath = await compressImageIfNeeded(filePath)
-		const ext = getFileExtension(preparedFilePath)
-		const cloudPath = `ingredients/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-		const uploadResult = await wx.cloud.uploadFile({
-			cloudPath,
-			filePath: preparedFilePath
-		})
-
-		const task = await createAiTask('recognize_image', {
-			fileID: uploadResult.fileID
-		}, getPreferredBackend())
-
-		await pollTaskStatus(task.taskId)
-	} catch (error) {
-		clearPollTimer()
-		uni.hideLoading()
-		isRecognizing.value = false
-
-		const message = error?.errMsg?.includes('chooseMedia:fail cancel')
-			? ''
-			: error.message || '图片上传失败，请稍后重试'
-
-		if (message) {
-			showRecognitionError(message)
-		}
-	}
 }
 
 const startMatch = () => {
@@ -446,10 +195,6 @@ const startMatch = () => {
 	})
 }
 
-onUnload(() => {
-	clearPollTimer()
-	uni.hideLoading()
-})
 </script>
 
 <style lang="scss" scoped>
@@ -582,13 +327,8 @@ onUnload(() => {
 		}
 	}
 
-	&--custom,
-	&--detected {
+	&--custom {
 		padding-right: 18rpx;
-	}
-
-	&--detected {
-		background: linear-gradient(135deg, #ff7e5f 0%, #fda085 100%);
 	}
 
 	&__text {
@@ -651,149 +391,6 @@ onUnload(() => {
 		flex-wrap: wrap;
 		gap: 16rpx;
 		margin-top: 22rpx;
-	}
-}
-
-.vision-btn {
-	display: flex;
-	align-items: center;
-	gap: 18rpx;
-	margin-top: 20rpx;
-	padding: 22rpx;
-	border-radius: 30rpx;
-	background: linear-gradient(135deg, #fff4ec 0%, #ffffff 100%);
-	border: 2rpx solid rgba(250, 102, 80, 0.12);
-	box-shadow: 0 18rpx 34rpx rgba(250, 102, 80, 0.12);
-
-	&--disabled {
-		opacity: 0.72;
-	}
-
-	&__icon-wrap {
-		width: 88rpx;
-		height: 88rpx;
-		border-radius: 28rpx;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: linear-gradient(135deg, $primary-color 0%, #ff9b73 100%);
-		box-shadow: 0 12rpx 24rpx rgba(250, 102, 80, 0.25);
-		flex-shrink: 0;
-	}
-
-	&__icon {
-		font-size: 40rpx;
-	}
-
-	&__content {
-		flex: 1;
-		min-width: 0;
-	}
-
-	&__title {
-		display: block;
-		font-size: 30rpx;
-		font-weight: 700;
-		color: #1f2329;
-	}
-
-	&__desc {
-		display: block;
-		margin-top: 8rpx;
-		font-size: 23rpx;
-		line-height: 1.6;
-		color: #8a9099;
-	}
-
-	&__arrow {
-		padding: 12rpx 20rpx;
-		border-radius: 999rpx;
-		background: rgba(250, 102, 80, 0.1);
-		font-size: 22rpx;
-		font-weight: 700;
-		color: $primary-color;
-		flex-shrink: 0;
-	}
-}
-
-.detected {
-	margin-top: 22rpx;
-	padding: 24rpx;
-	border-radius: 26rpx;
-	background: rgba(255, 255, 255, 0.76);
-	border: 2rpx dashed rgba(250, 102, 80, 0.2);
-
-	&__head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16rpx;
-		margin-bottom: 18rpx;
-	}
-
-	&__title {
-		font-size: 26rpx;
-		font-weight: 700;
-		color: #31363d;
-	}
-
-	&__count {
-		font-size: 22rpx;
-		color: $primary-color;
-	}
-
-	&__tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 16rpx;
-	}
-}
-
-.feedback-card {
-	margin-top: 20rpx;
-	padding: 24rpx;
-	border-radius: 26rpx;
-	border: 2rpx solid transparent;
-	box-shadow: 0 12rpx 28rpx rgba(24, 32, 56, 0.06);
-
-	&--gentle {
-		background: linear-gradient(180deg, #fff9f2 0%, #fff4e8 100%);
-		border-color: rgba(250, 166, 26, 0.18);
-	}
-
-	&--warning {
-		background: linear-gradient(180deg, #fff6f4 0%, #fff0ec 100%);
-		border-color: rgba(250, 102, 80, 0.18);
-	}
-
-	&__head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16rpx;
-	}
-
-	&__title {
-		font-size: 28rpx;
-		font-weight: 700;
-		color: #2b3138;
-	}
-
-	&__close {
-		padding: 8rpx 16rpx;
-		border-radius: 999rpx;
-		background: rgba(255, 255, 255, 0.72);
-		font-size: 22rpx;
-		color: #7d848d;
-		flex-shrink: 0;
-	}
-
-	&__desc {
-		display: block;
-		margin-top: 14rpx;
-		font-size: 24rpx;
-		line-height: 1.7;
-		color: #6a7078;
 	}
 }
 
@@ -875,8 +472,7 @@ onUnload(() => {
 	.ingredient-pop-enter-active,
 	.ingredient-pop-leave-active,
 	.ingredient-pop-move,
-	.tag,
-	.vision-btn {
+	.tag {
 		transition: none;
 	}
 }

@@ -1,6 +1,8 @@
 # AI Worker
 
-本地异步 AI Worker，负责消费 `ai_tasks` 集合中的任务，并将结果写回 `recipes` 与 `ai_tasks.resultRefs`。
+本地异步 AI Worker，负责消费 `ai_tasks` 集合中的任务，调用 CloudBase AI 网关生成菜谱，并将结果写回 `recipes` 与 `ai_tasks.resultRefs`。
+
+支持的任务类型：`recipe`（单道菜谱）、`meal_plan`（一桌菜单）。
 
 ## 必填环境变量
 
@@ -8,20 +10,12 @@
 CLOUDBASE_ENV_ID=cloud1-xxxx
 CLOUDBASE_SECRET_ID=你的 SecretId
 CLOUDBASE_SECRET_KEY=你的 SecretKey
-AI_BACKEND=cloudbase
+CLOUDBASE_API_KEY=CloudBase AI 网关的 API Key
 ```
 
-或切到本地模型：
+`CLOUDBASE_AI_PROVIDER`（默认 `hunyuan`）与 `CLOUDBASE_MODEL`（默认 `hunyuan-turbos-latest`）可按需覆盖；`CLOUDBASE_API_URL` 可绕过自动拼接的网关地址。
 
-```text
-AI_BACKEND=openai_compatible
-OPENAI_COMPAT_API_URL=http://127.0.0.1:11434/v1/chat/completions
-OPENAI_COMPAT_MODEL=deepseek-r1:8b
-OPENAI_COMPAT_API_KEY=
-OPENAI_COMPAT_DISABLE_RESPONSE_FORMAT=true
-```
-
-推理参数继续复用项目现有变量，例如：
+## 推理参数
 
 ```text
 AI_TEMPERATURE=0.2
@@ -34,7 +28,7 @@ AI_NUM_PREDICT=1200
 
 ## .env 文件
 
-`ai-worker` 现在会在启动时自动读取当前目录下的：
+`ai-worker` 启动时会自动读取当前目录下的：
 
 ```text
 .env
@@ -47,14 +41,7 @@ AI_NUM_PREDICT=1200
 - `.env` 其次
 - `.env.local` 只补充尚未设置的变量
 
-最简单的做法是在 [ai-worker/.env.example](/E:/code/AICAIPU/ai-worker/.env.example) 基础上复制一份 `.env`：
-
-```text
-cd ai-worker
-copy .env.example .env
-```
-
-然后把真实值填进去，再执行：
+把真实值写进 `.env` 后执行：
 
 ```text
 npm start

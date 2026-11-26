@@ -41,7 +41,6 @@ async function ensureUser(openid) {
     openid,
     nickname: DEFAULT_NICKNAME,
     avatarUrl: '',
-    prefs: { aiBackend: 'cloudbase' },
     stats: { favoriteCount: 0, historyCount: 0, recipeCount: 0 },
     schemaVersion: 2,
     createdAt: now,

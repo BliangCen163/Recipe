@@ -4,8 +4,6 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
 const db = cloud.database()
 
-const VALID_AI_BACKENDS = ['cloudbase', 'openai_compatible']
-
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
@@ -25,10 +23,6 @@ exports.main = async (event) => {
 
   if (typeof event.avatarUrl === 'string') {
     payload.avatarUrl = event.avatarUrl
-  }
-
-  if (VALID_AI_BACKENDS.includes(event.aiBackend)) {
-    payload['prefs.aiBackend'] = event.aiBackend
   }
 
   if (Object.keys(payload).length === 0) {
@@ -51,8 +45,7 @@ exports.main = async (event) => {
       success: true,
       openid,
       nickname: data.nickname || '美食爱好者',
-      avatarUrl: data.avatarUrl || '',
-      prefs: Object.assign({ aiBackend: 'cloudbase' }, data.prefs || {})
+      avatarUrl: data.avatarUrl || ''
     }
   } catch (error) {
     return {

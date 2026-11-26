@@ -20,25 +20,6 @@
 			</view>
 		</view>
 
-		<view class="backend-card">
-			<view class="backend-card__header">
-				<text class="backend-card__title">AI 后端</text>
-				<text class="backend-card__desc">影响后续创建的 AI 任务</text>
-			</view>
-			<view class="backend-card__options">
-				<view
-					v-for="item in backendOptions"
-					:key="item.value"
-					class="backend-chip"
-					:class="{ 'backend-chip--active': aiBackend === item.value }"
-					@click="setAiBackend(item.value)"
-				>
-					<text class="backend-chip__title">{{ item.label }}</text>
-					<text class="backend-chip__desc">{{ item.desc }}</text>
-				</view>
-			</view>
-		</view>
-
 		<view class="shortcut-card" @click="goToShoppingList">
 			<text class="shortcut-card__icon">🛒</text>
 			<view class="shortcut-card__body">
@@ -81,32 +62,6 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { userStore } from '../../stores/user'
-
-const aiBackend = ref('cloudbase')
-
-const backendOptions = [
-	{
-		value: 'cloudbase',
-		label: 'CloudBase AI',
-		desc: '走云端模型'
-	},
-	{
-		value: 'openai_compatible',
-		label: '本地 AI',
-		desc: '走本地 Worker / Ollama'
-	}
-]
-
-const loadAiBackend = () => {
-	try {
-		aiBackend.value = uni.getStorageSync('aiBackend') || 'cloudbase'
-		if (!uni.getStorageSync('aiBackend')) {
-			uni.setStorageSync('aiBackend', aiBackend.value)
-		}
-	} catch (error) {
-		aiBackend.value = 'cloudbase'
-	}
-}
 
 const FALLBACK_NICKNAME = '微信用户'
 const DEFAULT_CLOUD_NICKNAME = '美食爱好者'
@@ -160,30 +115,7 @@ const goToRecipeFavorites = () => {
 	})
 }
 
-const setAiBackend = (value) => {
-	if (!value || aiBackend.value === value) return
-
-	aiBackend.value = value
-	uni.setStorageSync('aiBackend', value)
-	userStore.setPrefs({ aiBackend: value })
-
-	if (userStore.openid) {
-		wx.cloud.callFunction({
-			name: 'updateUserProfile',
-			data: { aiBackend: value }
-		}).catch((error) => {
-			console.warn('[user] sync aiBackend failed:', error?.message || error)
-		})
-	}
-
-	uni.showToast({
-		title: value === 'cloudbase' ? '已切换到 CloudBase AI' : '已切换到本地 AI',
-		icon: 'none'
-	})
-}
-
 onShow(() => {
-	loadAiBackend()
 	storedNickname.value = uni.getStorageSync('nickname') || ''
 })
 </script>
@@ -267,66 +199,6 @@ onShow(() => {
 		font-size: 24rpx;
 		font-weight: 600;
 		color: $primary-color;
-	}
-}
-
-.backend-card {
-	margin: 24rpx;
-	margin-bottom: 0;
-	padding: 28rpx 24rpx;
-	background: #ffffff;
-	border-radius: 24rpx;
-	box-shadow: 0 4rpx 16rpx rgba(24, 32, 56, 0.06);
-
-	&__header {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		gap: 16rpx;
-	}
-
-	&__title {
-		font-size: 30rpx;
-		font-weight: 700;
-		color: #1f2329;
-	}
-
-	&__desc {
-		font-size: 22rpx;
-		color: #9aa0a6;
-	}
-
-	&__options {
-		margin-top: 20rpx;
-		display: flex;
-		gap: 16rpx;
-	}
-}
-
-.backend-chip {
-	flex: 1;
-	padding: 20rpx 18rpx;
-	border-radius: 20rpx;
-	background: #f7f8fa;
-	border: 2rpx solid transparent;
-
-	&--active {
-		background: rgba(250, 102, 80, 0.08);
-		border-color: rgba(250, 102, 80, 0.28);
-	}
-
-	&__title {
-		display: block;
-		font-size: 26rpx;
-		font-weight: 700;
-		color: #1f2329;
-	}
-
-	&__desc {
-		display: block;
-		margin-top: 8rpx;
-		font-size: 22rpx;
-		color: #8a9099;
 	}
 }
 

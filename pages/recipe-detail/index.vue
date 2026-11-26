@@ -315,18 +315,6 @@ const addIngredientsToShopping = async (mode) => {
 	}
 }
 
-const getPreferredBackend = () => {
-	try {
-		const backend = uni.getStorageSync('aiBackend') || 'cloudbase'
-		if (!uni.getStorageSync('aiBackend')) {
-			uni.setStorageSync('aiBackend', backend)
-		}
-		return backend
-	} catch (error) {
-		return 'cloudbase'
-	}
-}
-
 const parseIngredients = (value) => {
 	if (!value) return []
 	try {
@@ -357,10 +345,8 @@ const updateLoadingByTask = (task) => {
 	}
 
 	if (task.status === 'processing') {
-		loadingText.value = task.backend === 'cloudbase' ? 'CloudBase AI 正在生成菜谱' : '本地 AI 正在生成菜谱'
-		loadingDesc.value = task.backend === 'cloudbase'
-			? '云端模型已开始处理，请稍等片刻。'
-			: '本地模型已开始处理，请稍等片刻。'
+		loadingText.value = 'CloudBase AI 正在生成菜谱'
+		loadingDesc.value = '云端模型已开始处理，请稍等片刻。'
 	}
 }
 
@@ -513,7 +499,7 @@ const fetchRecipe = async () => {
 		// the legacy direct call path, which bypasses ai_tasks and result recovery.
 		const task = await createAiTask('recipe', {
 			ingredients: selectedIngredients.value
-		}, getPreferredBackend())
+		})
 
 		const finalTask = await waitForAiTask(task.taskId, {
 			onUpdate: updateLoadingByTask,

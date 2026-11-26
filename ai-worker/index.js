@@ -7,14 +7,10 @@ const cloudbase = require('@cloudbase/node-sdk')
 
 const DEFAULT_PROVIDER = 'hunyuan'
 const DEFAULT_MODEL = 'hunyuan-turbos-latest'
-const DEFAULT_OPENAI_COMPAT_MODEL = 'gpt-4o-mini'
 const DEFAULT_POLL_INTERVAL_MS = 3000
 const DEFAULT_STALE_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_TASK_LOG_DETAIL = 'verbose'
-const DEFAULT_OLLAMA_API_URL = 'http://127.0.0.1:11434/api/generate'
-const DEFAULT_OLLAMA_VISION_MODEL = 'qwen3.5:4b'
-const IMAGE_RECOGNITION_PROMPT = '你是一个专业的后厨食材识别专家。请识别提供的图片中包含的所有原始烹饪食材。必须仅输出一个 JSON 格式的字符串数组，例如 ["西红柿", "鸡蛋", "五花肉"]。绝对不要输出任何其他解释性文字或 Markdown 标记。'
 
 function stripWrappingQuotes(value) {
 	if (
@@ -178,19 +174,19 @@ function parseThinkValue(raw) {
 
 function buildInferenceOptions() {
 	const options = {
-		temperature: readNumberEnv('AI_TEMPERATURE', 'OPENAI_COMPAT_TEMPERATURE')
+		temperature: readNumberEnv('AI_TEMPERATURE')
 	}
 
 	const optionalMappings = [
-		['min_p', ['AI_MIN_P', 'OPENAI_COMPAT_MIN_P']],
-		['top_p', ['AI_TOP_P', 'OPENAI_COMPAT_TOP_P']],
-		['top_k', ['AI_TOP_K', 'OPENAI_COMPAT_TOP_K']],
-		['repeat_penalty', ['AI_REPEAT_PENALTY', 'OPENAI_COMPAT_REPEAT_PENALTY']],
-		['presence_penalty', ['AI_PRESENCE_PENALTY', 'OPENAI_COMPAT_PRESENCE_PENALTY']],
-		['frequency_penalty', ['AI_FREQUENCY_PENALTY', 'OPENAI_COMPAT_FREQUENCY_PENALTY']],
-		['num_predict', ['AI_NUM_PREDICT', 'OPENAI_COMPAT_NUM_PREDICT']],
-		['max_tokens', ['AI_MAX_TOKENS', 'OPENAI_COMPAT_MAX_TOKENS']],
-		['seed', ['AI_SEED', 'OPENAI_COMPAT_SEED']]
+		['min_p', ['AI_MIN_P']],
+		['top_p', ['AI_TOP_P']],
+		['top_k', ['AI_TOP_K']],
+		['repeat_penalty', ['AI_REPEAT_PENALTY']],
+		['presence_penalty', ['AI_PRESENCE_PENALTY']],
+		['frequency_penalty', ['AI_FREQUENCY_PENALTY']],
+		['num_predict', ['AI_NUM_PREDICT']],
+		['max_tokens', ['AI_MAX_TOKENS']],
+		['seed', ['AI_SEED']]
 	]
 
 	for (const [field, keys] of optionalMappings) {
@@ -204,12 +200,12 @@ function buildInferenceOptions() {
 		options.temperature = 0.7
 	}
 
-	const think = parseThinkValue(readTextEnv('AI_THINK', 'OPENAI_COMPAT_THINK'))
+	const think = parseThinkValue(readTextEnv('AI_THINK'))
 	if (think !== undefined) {
 		options.think = think
 	}
 
-	const reasoningEffort = readTextEnv('AI_REASONING_EFFORT', 'OPENAI_COMPAT_REASONING_EFFORT')
+	const reasoningEffort = readTextEnv('AI_REASONING_EFFORT')
 	if (reasoningEffort) {
 		options.reasoning_effort = reasoningEffort
 	}
@@ -217,77 +213,33 @@ function buildInferenceOptions() {
 	return options
 }
 
-function resolveVisionConfig() {
-	return {
-		apiUrl: readTextEnv('OLLAMA_VISION_API_URL', 'OLLAMA_API_URL') || DEFAULT_OLLAMA_API_URL,
-		model: readTextEnv('OLLAMA_VISION_MODEL') || DEFAULT_OLLAMA_VISION_MODEL
-	}
-}
-
-function resolveAiConfig(backendOverride) {
-	const backend = String(backendOverride || '').trim()
-
-	if (!backend) {
-		throw new Error('任务未指定 AI 后端')
-	}
-
-	if (backend === 'openai_compatible') {
-		return {
-			backend,
-			apiUrl: readTextEnv('OPENAI_COMPAT_API_URL', 'LOCAL_OPENAI_API_URL'),
-			model: readTextEnv('OPENAI_COMPAT_MODEL', 'LOCAL_OPENAI_MODEL') || DEFAULT_OPENAI_COMPAT_MODEL,
-			apiKey: readTextEnv('OPENAI_COMPAT_API_KEY', 'LOCAL_OPENAI_API_KEY'),
-			supportsJsonObject: readTextEnv('OPENAI_COMPAT_DISABLE_RESPONSE_FORMAT') !== 'true'
-		}
-	}
-
-	if (backend !== 'cloudbase') {
-		throw new Error(`不支持的 AI 后端：${backend}`)
-	}
-
+function resolveAiConfig() {
 	const envId = readTextEnv('CLOUDBASE_ENV_ID', 'TCB_ENV_ID', 'TCB_ENV')
 	const provider = readTextEnv('CLOUDBASE_AI_PROVIDER') || DEFAULT_PROVIDER
 
 	return {
-		backend: 'cloudbase',
 		apiUrl: readTextEnv('CLOUDBASE_API_URL') || (
 			envId
 				? `https://${envId}.api.tcloudbasegateway.com/v1/ai/${provider}/v1/chat/completions`
 				: ''
 		),
 		model: readTextEnv('CLOUDBASE_MODEL') || DEFAULT_MODEL,
-		apiKey: readTextEnv('CLOUDBASE_API_KEY'),
-		supportsJsonObject: true
+		apiKey: readTextEnv('CLOUDBASE_API_KEY')
 	}
 }
 
-function assertBackendReady(backend) {
-	if (backend === 'cloudbase') {
-		const envId = readTextEnv('CLOUDBASE_ENV_ID', 'TCB_ENV_ID', 'TCB_ENV')
-		const apiUrl = readTextEnv('CLOUDBASE_API_URL')
-		const apiKey = readTextEnv('CLOUDBASE_API_KEY')
+function assertBackendReady() {
+	const envId = readTextEnv('CLOUDBASE_ENV_ID', 'TCB_ENV_ID', 'TCB_ENV')
+	const apiUrl = readTextEnv('CLOUDBASE_API_URL')
+	const apiKey = readTextEnv('CLOUDBASE_API_KEY')
 
-		if (!apiUrl && !envId) {
-			throw new Error('任务指定了 cloudbase，但未配置 CLOUDBASE_ENV_ID 或 CLOUDBASE_API_URL')
-		}
-
-		if (!apiKey) {
-			throw new Error('任务指定了 cloudbase，但未配置 CLOUDBASE_API_KEY')
-		}
-
-		return
+	if (!apiUrl && !envId) {
+		throw new Error('未配置 CLOUDBASE_ENV_ID 或 CLOUDBASE_API_URL')
 	}
 
-	if (backend === 'openai_compatible') {
-		const apiUrl = readTextEnv('OPENAI_COMPAT_API_URL', 'LOCAL_OPENAI_API_URL')
-		if (!apiUrl) {
-			throw new Error('任务指定了 openai_compatible，但未配置 OPENAI_COMPAT_API_URL 或 LOCAL_OPENAI_API_URL')
-		}
-
-		return
+	if (!apiKey) {
+		throw new Error('未配置 CLOUDBASE_API_KEY')
 	}
-
-	throw new Error(`任务未指定有效的 AI 后端：${backend || 'empty'}`)
 }
 
 function buildRecipePrompt(ingredients) {
@@ -451,287 +403,14 @@ function summarizeUsage(usage) {
 	return `usage prompt=${promptTokens || 0} completion=${completionTokens || 0} total=${totalTokens || 0}`
 }
 
-function normalizeStringArray(value) {
-	if (!Array.isArray(value)) {
-		return []
-	}
-
-	const seen = new Set()
-	const result = []
-
-	for (const item of value) {
-		const normalized = String(item || '').trim()
-		if (!normalized || seen.has(normalized)) {
-			continue
-		}
-
-		seen.add(normalized)
-		result.push(normalized)
-	}
-
-	return result
-}
-
-function extractIngredientNamesFromObjects(items) {
-	if (!Array.isArray(items)) {
-		return []
-	}
-
-	const names = items.map((item) => {
-		if (typeof item === 'string') {
-			return item
-		}
-
-		if (!item || typeof item !== 'object') {
-			return ''
-		}
-
-		return item.name || item.名称 || item.食材 || item.物体 || item.label || ''
-	})
-
-	return normalizeStringArray(names)
-}
-
-function extractIngredientNamesFromRecord(record) {
-	if (!record || typeof record !== 'object' || Array.isArray(record)) {
-		return []
-	}
-
-	return normalizeStringArray(Object.values(record))
-}
-
-function hasErrorLikeFields(record) {
-	if (!record || typeof record !== 'object' || Array.isArray(record)) {
-		return false
-	}
-
-	return ['error', 'errors', 'message', 'warning', 'detail'].some((key) => {
-		const value = record[key]
-		return typeof value === 'string' && value.trim()
-	})
-}
-
-function getErrorLikeMessage(record) {
-	if (!record || typeof record !== 'object' || Array.isArray(record)) {
-		return ''
-	}
-
-	for (const key of ['error', 'errors', 'message', 'warning', 'detail']) {
-		const value = record[key]
-		if (typeof value === 'string' && value.trim()) {
-			return value.trim()
-		}
-	}
-
-	return ''
-}
-
-function extractIngredientNamesFromJsonLikeString(content) {
-	if (typeof content !== 'string' || !content.trim()) {
-		return []
-	}
-
-	const matches = []
-	const pattern = /:\s*"((?:[^"\\]|\\.)*)"/g
-	let matched = pattern.exec(content)
-
-	while (matched) {
-		try {
-			matches.push(JSON.parse(`"${matched[1]}"`))
-		} catch (error) {
-			matches.push(matched[1])
-		}
-		matched = pattern.exec(content)
-	}
-
-	return normalizeStringArray(matches)
-}
-
-function isEmptyPlainObject(value) {
-	return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0
-}
-
-function toBuffer(fileContent) {
-	if (Buffer.isBuffer(fileContent)) {
-		return fileContent
-	}
-
-	if (typeof fileContent === 'string') {
-		return Buffer.from(fileContent)
-	}
-
-	throw new Error('下载的图片内容为空')
-}
-
-async function downloadImageAsBase64(fileID) {
-	const downloadResult = await app.downloadFile({ fileID })
-	const fileBuffer = toBuffer(downloadResult && downloadResult.fileContent)
-
-	if (!fileBuffer.length) {
-		throw new Error('下载的图片内容为空')
-	}
-
-	// Ollama images 字段需要纯净的 base64 数据，不能带 data:image/... 前缀。
-	return {
-		base64: fileBuffer.toString('base64'),
-		byteLength: fileBuffer.length
-	}
-}
-
-function parseRecognizedIngredients(response) {
-	const candidates = []
-
-	if (typeof response?.response === 'string' && response.response.trim()) {
-		candidates.push(response.response.trim())
-	}
-
-	if (Array.isArray(response?.response)) {
-		candidates.push(response.response)
-	}
-
-	if (response?.response && typeof response.response === 'object' && !Array.isArray(response.response)) {
-		candidates.push(response.response)
-	}
-
-	if (typeof response?.message?.content === 'string' && response.message.content.trim()) {
-		candidates.push(response.message.content.trim())
-	}
-
-	if (Array.isArray(response?.message?.content)) {
-		candidates.push(response.message.content)
-	}
-
-	if (typeof response?.thinking === 'string' && response.thinking.trim()) {
-		candidates.push(response.thinking.trim())
-	}
-
-	if (response?.thinking && typeof response.thinking === 'object' && !Array.isArray(response.thinking)) {
-		candidates.push(response.thinking)
-	}
-
-	if (!candidates.length) {
-		throw new Error(`Ollama 未返回识别结果，原始响应：${truncateForLog(response)}`)
-	}
-
-	let parsed = null
-	let lastError = null
-
-	for (const candidate of candidates) {
-		try {
-			if (Array.isArray(candidate)) {
-				parsed = candidate
-			} else if (candidate && typeof candidate === 'object') {
-				if (isEmptyPlainObject(candidate)) {
-					throw new Error('未识别到食物，请换一张包含食材的图片再试')
-				}
-
-				if (hasErrorLikeFields(candidate)) {
-					throw new Error(`视觉模型返回错误：${getErrorLikeMessage(candidate)}`)
-				}
-
-				if (Array.isArray(candidate.ingredients)) {
-					parsed = candidate.ingredients
-				} else if (Array.isArray(candidate.result)) {
-					parsed = candidate.result
-				} else {
-					parsed = candidate
-				}
-			} else if (typeof candidate === 'string') {
-				const rawValues = extractIngredientNamesFromJsonLikeString(candidate)
-				if (rawValues.length > 1) {
-					return rawValues
-				}
-
-				parsed = JSON.parse(unwrapJson(candidate))
-				if (isEmptyPlainObject(parsed)) {
-					throw new Error('未识别到食物，请换一张包含食材的图片再试')
-				}
-
-				if (hasErrorLikeFields(parsed)) {
-					throw new Error(`视觉模型返回错误：${getErrorLikeMessage(parsed)}`)
-				}
-			}
-
-			const normalizedDirect = normalizeStringArray(parsed)
-			if (normalizedDirect.length) {
-				return normalizedDirect
-			}
-
-			if (parsed && typeof parsed === 'object') {
-				const nested = normalizeStringArray(
-					parsed.ingredients ||
-					parsed.result ||
-					parsed.data ||
-					parsed.name ||
-					parsed.names
-				)
-				if (nested.length) {
-					return nested
-				}
-
-				const objectNames = extractIngredientNamesFromObjects(
-					parsed['视觉分析'] ||
-					parsed.visual_analysis ||
-					parsed.items ||
-					parsed.ingredients ||
-					parsed.name ||
-					parsed.names
-				)
-				if (objectNames.length) {
-					return objectNames
-				}
-
-				const recordValues = extractIngredientNamesFromRecord(parsed)
-				if (recordValues.length) {
-					return recordValues
-				}
-			}
-		} catch (error) {
-			lastError = error
-		}
-	}
-
-	if (lastError) {
-		throw new Error(`识图结果解析失败：${lastError.message}，原始响应：${truncateForLog(response)}`)
-	}
-
-	throw new Error(`识图结果不是有效的食材数组，原始响应：${truncateForLog(response)}`)
-}
-
-async function recognizeIngredientsFromImage(base64Image, logger) {
-	const visionConfig = resolveVisionConfig()
-	const response = await sendJsonRequest(
-		visionConfig.apiUrl,
-		{
-			'Content-Type': 'application/json'
-		},
-		{
-			model: visionConfig.model,
-			prompt: IMAGE_RECOGNITION_PROMPT,
-			images: [base64Image],
-			stream: false,
-			format: 'json',
-			think: false
-		}
-	)
-
-	if (logger) {
-		logger.point('vision_response_received', `response=${truncateForLog(response)}`)
-	}
-
-	return parseRecognizedIngredients(response)
-}
-
 async function callAi(payload, type, logger) {
-	const aiConfig = resolveAiConfig(payload.backend)
+	const aiConfig = resolveAiConfig()
 
 	if (!aiConfig.apiUrl) {
-		throw new Error(aiConfig.backend === 'openai_compatible'
-			? '未配置 OPENAI_COMPAT_API_URL 或 LOCAL_OPENAI_API_URL'
-			: '未配置 CLOUDBASE_ENV_ID 或 CLOUDBASE_API_URL')
+		throw new Error('未配置 CLOUDBASE_ENV_ID 或 CLOUDBASE_API_URL')
 	}
 
-	if (aiConfig.backend === 'cloudbase' && !aiConfig.apiKey) {
+	if (!aiConfig.apiKey) {
 		throw new Error('未配置 CLOUDBASE_API_KEY 环境变量')
 	}
 
@@ -754,7 +433,7 @@ async function callAi(payload, type, logger) {
 		]
 	}
 
-	if (type === 'recipe' && aiConfig.supportsJsonObject) {
+	if (type === 'recipe') {
 		requestPayload.response_format = { type: 'json_object' }
 	}
 
@@ -897,15 +576,6 @@ async function resetStaleProcessingTasks() {
 }
 
 async function fetchPendingTask() {
-	const imageTaskResult = await db.collection('ai_tasks').where({
-		status: 'pending',
-		type: 'recognize_image'
-	}).orderBy('createdAt', 'asc').limit(1).get()
-
-	if (Array.isArray(imageTaskResult.data) && imageTaskResult.data.length) {
-		return imageTaskResult.data[0]
-	}
-
 	const { data } = await db.collection('ai_tasks').where({
 		status: 'pending'
 	}).orderBy('createdAt', 'asc').limit(1).get()
@@ -962,8 +632,7 @@ async function processRecipeTask(task, logger) {
 
 	logger.point('recipe_ai_start', `ingredients=${ingredients.length}`)
 	const parsed = await callAi({
-		ingredients,
-		backend: task.backend
+		ingredients
 	}, 'recipe', logger)
 	logger.step('recipe_ai_done', 'recipe_ai_start')
 	const normalized = normalizeRecipe(parsed, ingredients, 'AI 私房菜')
@@ -1001,8 +670,7 @@ async function processMealPlanTask(task, logger) {
 		dishCount,
 		cuisine,
 		preferences,
-		availableIngredients,
-		backend: task.backend
+		availableIngredients
 	}, 'meal_plan', logger)
 	logger.step('meal_plan_ai_done', 'meal_plan_ai_start')
 
@@ -1041,33 +709,6 @@ async function processMealPlanTask(task, logger) {
 	}
 }
 
-async function processRecognizeImageTask(task, logger) {
-	const payload = task.payload || {}
-	const fileID = String(payload.fileID || '').trim()
-
-	if (!fileID) {
-		throw new Error('任务缺少图片 fileID')
-	}
-
-	logger.point('image_download_start')
-	const downloaded = await downloadImageAsBase64(fileID)
-	logger.step(
-		'image_download_done',
-		'image_download_start',
-		`binary=${formatBytes(downloaded.byteLength)} base64=${formatBytes(Buffer.byteLength(downloaded.base64, 'utf8'))}`
-	)
-
-	const visionConfig = resolveVisionConfig()
-	logger.point('vision_infer_start', `model=${visionConfig.model}`)
-	const ingredients = await recognizeIngredientsFromImage(downloaded.base64, logger)
-	logger.step('vision_infer_done', 'vision_infer_start', `ingredients=${ingredients.length}`)
-
-	return {
-		result: ingredients,
-		resultRefs: {}
-	}
-}
-
 async function finalizeTaskSuccess(taskId, payload) {
 	const taskDoc = await db.collection('ai_tasks').doc(taskId).get()
 	const task = unwrapDocData(taskDoc) || {}
@@ -1100,14 +741,7 @@ async function finalizeTaskFailure(taskId, errorMessage) {
 }
 
 async function processTask(task, logger) {
-	if (task.type === 'recognize_image') {
-		return processRecognizeImageTask(task, logger)
-	}
-
-	const taskBackend = String(task.backend || '').trim()
-	assertBackendReady(taskBackend)
-	const aiConfig = resolveAiConfig(taskBackend)
-	task.backend = aiConfig.backend
+	assertBackendReady()
 
 	if (task.type === 'recipe') {
 		return processRecipeTask(task, logger)
@@ -1137,7 +771,7 @@ async function workOnce() {
 	const createdAt = getCollectionDate(task.createdAt)
 	const queueWaitMs = createdAt ? Date.now() - createdAt.getTime() : null
 
-	console.log(`[worker] processing task ${task._id} (${task.type}) with backend ${task.backend || 'cloudbase'}`)
+	console.log(`[worker] processing task ${task._id} (${task.type})`)
 	logger.point('task_claimed', queueWaitMs === null ? '' : `queue_wait=${queueWaitMs}ms attempt=${Number(task.attemptCount || 0) + 1}`)
 
 	try {

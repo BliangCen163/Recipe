@@ -216,8 +216,7 @@ exports.main = async (event) => {
       errorMessage: task.errorMessage || '',
       result: task.result || {},
       resultRefs: task.resultRefs || {},
-      attemptCount: Number(task.attemptCount) || 0,
-      backend: task.backend || ''
+      attemptCount: Number(task.attemptCount) || 0
     }
   } catch (error) {
     return {

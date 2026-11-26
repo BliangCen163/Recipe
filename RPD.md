@@ -12,7 +12,7 @@
 2. [项目定位与核心功能](#2-项目定位与核心功能)
 3. [技术栈与整体架构](#3-技术栈与整体架构)
 4. [目录结构](#4-目录结构)
-5. [页面与路由（14 个页面）](#5-页面与路由14-个页面)
+5. [页面与路由（15 个页面）](#5-页面与路由15-个页面)
 6. [组件与公共模块](#6-组件与公共模块)
 7. [云函数详解（14 个）](#7-云函数详解14-个)
 8. [数据库设计（8 个集合）](#8-数据库设计8-个集合)
@@ -43,7 +43,7 @@
 | 页面数量 | 13（3 个 tabBar + 10 个功能页） |
 | 云函数数量 | 14 |
 | 数据库集合 | 5：`users`、`menu`、`recipes`、`ai_tasks`、`original_recipes` |
-| 云存储目录 | 3：`ingredients/`、`avatars/`、`original-recipes/` |
+| 云存储目录 | 2：`avatars/`、`original-recipes/` |
 | AI 能力 | ① 同步问答：`aiAssistant` 云函数直连 CloudBase AI 网关；② 异步生成：`ai_tasks` 队列 + 本地 `ai-worker` 执行器 |
 | 种子数据 | `menu.json`：61.7 MB / 32,055 行，JSON Lines，每行一条菜谱文档 |
 | 当前状态 | 云开发资源已于 2026 年上半年过期释放，需按 §12 重建环境后才能完整运行 |
@@ -60,7 +60,7 @@
 | --- | --- | --- |
 | 找菜谱 | `pages/index/index` → `pages/recipe-list/index` | 浏览内置 3 万+ 菜谱库，按菜系 / 地域 / 类型 / 场景四种维度分类筛选 |
 | 搜索 | `pages/index/search` | 关键词搜索，优先走 `search` 云函数，失败时前端本地兜底 |
-| 剩菜匹配 | `pages/fridge/index` | 勾选或手输现有食材，也支持拍照识图，让 AI 生成「现在就能做」的菜 |
+| 剩菜匹配 | `pages/fridge/index` | 勾选或手输现有食材，让 AI 生成「现在就能做」的菜 |
 | 宴客菜单 | `pages/meal-planner/index` → `pages/meal-plan-result/index` | 输入人数、菜数、菜系、忌口、主食材，AI 一次生成一整桌菜 |
 | 后厨问答 | `pages/ai-chat/index` | 聊天式「后厨领班」，回答盐放多、油温判断、肉炒老等突发问题 |
 | 个人内容 | `pages/user/*` | 收藏、浏览历史、采购单、自创菜谱与发布 |
@@ -80,13 +80,13 @@
 
 | 层 | 选型 | 职责 |
 | --- | --- | --- |
-| 视图层 | uni-app + Vue 3 Composition API | 14 个页面、组件、交互与状态 |
-| 状态层 | 轻量 `reactive` store（`stores/user.js`） | 登录态、昵称头像、AI 后端偏好 |
+| 视图层 | uni-app + Vue 3 Composition API | 15 个页面、组件、交互与状态 |
+| 状态层 | 轻量 `reactive` store（`stores/user.js`） | 登录态、昵称头像 |
 | 工具层 | `utils/recipes.js`、`utils/ai-task.js` | 菜谱分类归一化、AI 任务创建与轮询 |
 | 云函数层 | 微信云开发 14 个 Node.js 函数（`wx-server-sdk`） | 登录、CRUD、搜索、任务入队、AI 问答 |
 | 数据层 | 云数据库 8 集合 + 云存储 3 目录 | 业务数据与图片 |
 | 执行层 | 本地 `ai-worker`（Node + `@cloudbase/node-sdk`） | 轮询 `ai_tasks`，调用大模型，写回 `recipes` |
-| 模型层 | CloudBase AI 网关（混元）/ 本地 Ollama（OpenAI 兼容） | 两种可切换的推理后端 |
+| 模型层 | CloudBase AI 网关（混元） | 唯一推理出口，云端统一调用 |
 
 ### 3.2 架构图
 
@@ -117,7 +117,7 @@
 
 - 云函数单次执行时长有限（默认 3～20 秒可调），大模型生成一桌菜经常超过 60 秒，容易超时。
 - 把「调用大模型」拆成异步任务：小程序只负责**入队 + 轮询**，真正的长耗时推理放在可长时间运行的本地 Node 进程里。
-- 好处：前端不卡、可重试、可换后端（云端混元 / 本地 Ollama）、任务结果可回溯。
+- 好处：前端不卡、可重试、模型出口统一、任务结果可回溯。
 - 代价：`ai-worker` 必须常开，电脑关机或进程挂掉时任务会停在 `pending`。
 
 ---
@@ -132,7 +132,7 @@ aicaipu/                        ← 真正的源码根目录（外层 Recipe/ �
 │  │  └─ search.vue            搜索页
 │  ├─ recipe-list/index.vue    分类浏览（四种分类模式 + 快捷筛选）
 │  ├─ recipe-detail/index.vue  菜谱详情（展示 / AI 生成 / 收藏 / 计时器）
-│  ├─ fridge/index.vue         冰箱食材匹配 + 拍照识图
+│  ├─ fridge/index.vue         冰箱食材匹配
 │  ├─ ai-chat/index.vue        AI 后厨问答
 │  ├─ meal-planner/index.vue   宴客菜单表单
 │  ├─ meal-plan-result/index.vue 套餐结果 + 一键加采购单
@@ -140,7 +140,7 @@ aicaipu/                        ← 真正的源码根目录（外层 Recipe/ �
 │  ├─ recipe-favorites/
 │  │  └─ recipe-favorites.vue  菜谱收藏（收藏列表 / 取消收藏 / 下拉刷新）
 │  ├─ user/
-│  │  ├─ index.vue             我的（资料 / AI 后端 / 快捷入口）
+│  │  ├─ index.vue             我的（资料 / 快捷入口）
 │  │  ├─ history/index.vue     浏览历史
 │  │  ├─ personal_recipese.vue 个人菜谱列表（注意原文件名拼写）
 │  │  └─ original_recipes.vue  自创菜谱创建 / 编辑
@@ -182,7 +182,7 @@ aicaipu/                        ← 真正的源码根目录（外层 Recipe/ �
 
 ---
 
-## 5. 页面与路由（14 个页面）
+## 5. 页面与路由（15 个页面）
 
 ### 5.0 总览
 
@@ -190,9 +190,9 @@ aicaipu/                        ← 真正的源码根目录（外层 Recipe/ �
 | --- | --- | --- | --- | --- | --- |
 | 1 | `pages/index/index` | 做饭吧 | 首页：搜索、精选菜谱、功能入口 | — | `menu` |
 | 2 | `pages/ai-chat/index` | AI 聊菜 | 后厨问答聊天 | `aiAssistant` | — |
-| 3 | `pages/user/index` | 我的 | 资料、AI 后端、快捷入口 | `login`、`updateUserProfile` | `users` |
+| 3 | `pages/user/index` | 我的 | 资料展示、快捷入口 | `login` | `users` |
 | 4 | `pages/index/search` | 搜索 | 关键词搜索 + 分页 | `search`（失败走本地兜底） | `menu`（兜底时） |
-| 5 | `pages/fridge/index` | 冰箱 | 选食材 / 识图 → AI 生成菜谱 | `createAiTask`、`getAiTaskStatus` | — |
+| 5 | `pages/fridge/index` | 冰箱 | 选食材 → AI 生成菜谱 | `createAiTask`、`getAiTaskStatus` | — |
 | 6 | `pages/recipe-list/index` | 菜谱分类 | 四种维度分类浏览 | — | `menu` |
 | 7 | `pages/recipe-detail/index` | 菜谱详情 | 展示 / AI 生成 / 收藏 / 计时 | `createAiTask`、`getAiTaskStatus`、`toggleFavorite`、`recordViewHistory` | `menu`、`recipes`、`original_recipes`、`users` |
 | 8 | `pages/meal-planner/index` | 宴客菜单 | 填人数 / 菜数 / 偏好 | — | — |
@@ -202,6 +202,7 @@ aicaipu/                        ← 真正的源码根目录（外层 Recipe/ �
 | 12 | `pages/user/personal_recipese` | 个人菜谱 | 自创菜谱列表 / 发布 / 下架 / 删除 | `manageOriginalRecipe` | `original_recipes` |
 | 13 | `pages/user/original_recipes` | 自创菜谱 | 创建 / 编辑自创菜谱 | `createOriginalRecipe` | `original_recipes`（编辑时读） |
 | 14 | `pages/recipe-favorites/recipe-favorites` | 菜谱收藏 | 收藏列表（分页）、取消收藏、下拉刷新 | `getFavorites`、`toggleFavorite` | —（全部经云函数读取） |
+| 15 | `pages/user/profile/index` | 编辑资料 | 头像 / 昵称 / 登录状态 | `updateUserProfile` | `users` |
 
 ### 5.1 首页 `pages/index/index.vue`
 
@@ -237,7 +238,7 @@ aicaipu/                        ← 真正的源码根目录（外层 Recipe/ �
 
 AI 生成流程（`fetchRecipe`）：
 
-1. `createAiTask('recipe', { ingredients }, backend)`，`backend` 取本地存储 `aiBackend`，默认 `cloudbase`。
+1. `createAiTask('recipe', { ingredients })`。
 2. `waitForAiTask(taskId)` 轮询，回调里根据 `pending / processing` 更新文案（「排队中」「CloudBase AI 正在生成」）。
 3. 成功后从 `finalTask.resultRefs.recipeId` 取菜谱 ID，再 `loadFromDB` 读 `recipes`。
 4. 页面卸载时 `isPageDisposed = true`，停止轮询（抛 `TASK_POLL_ABORTED`）。
@@ -253,9 +254,8 @@ AI 生成流程（`fetchRecipe`）：
 
 - 食材按四组展示：肉类蛋白 / 蔬菜菌菇 / 主食碳水 / 调味基础，支持自定义输入。
 - 四个快捷搭配：家常小炒、清淡汤羹、下饭硬菜、一人食。
-- **拍照识图**：`chooseMedia` → 大于 1600px 时压缩（quality 72）→ `wx.cloud.uploadFile` 到 `ingredients/<时间戳>-<随机>.<ext>` → `createAiTask('recognize_image', { fileID }, backend)` → 每 2 秒轮询 `getAiTaskStatus` → 识别结果去重合并进已选食材。
+- 该页只做手动选食材，拍照识图已下线。
 - 「开始 AI 智能匹配」把食材数组 `JSON.stringify` 后 `encodeURIComponent`，跳到 `/pages/recipe-detail/index?ingredients=...`。
-- 注意：识图任务固定走 worker 的视觉模型（`OLLAMA_VISION_*`），与文本后端无关。
 
 ### 5.6 AI 问答 `pages/ai-chat/index.vue`
 
@@ -275,7 +275,7 @@ AI 生成流程（`fetchRecipe`）：
 
 结果页：
 
-- `createAiTask('meal_plan', { diners, dishCount, cuisine, preferences, availableIngredients }, backend)`。
+- `createAiTask('meal_plan', { diners, dishCount, cuisine, preferences, availableIngredients })`。
 - 轮询成功后从 `resultRefs.recipeIds` 批量读 `recipes`，用 `RecipeCard` 渲染。
 - 「一键将全部食材加入采购单」把每道菜的食材摊平（`name/amount/recipeTitle`）后调 `manageShoppingList` 的 `append`。
 
@@ -289,9 +289,8 @@ AI 生成流程（`fetchRecipe`）：
 
 ### 5.9 我的 `pages/user/index.vue`
 
-- **头像**：`open-type="chooseAvatar"` → 上传到 `avatars/<openid>-<时间戳>.<ext>` → `updateUserProfile`。
-- **昵称**：`type="nickname"` 输入框，失焦保存，调 `updateUserProfile`。
-- **AI 后端切换**：`cloudbase`（CloudBase AI，云端模型）/ `openai_compatible`（本地 AI / Ollama），写入本地存储 `aiBackend` 并同步到 `users.prefs.aiBackend`（调 `updateUserProfile`），只影响之后创建的任务。
+- 资料区**只读**：展示头像、昵称与登录状态；「编辑资料 ›」进入 `pages/user/profile/index.vue`（见 §5.14）修改。
+- AI 后端切换已下线，模型固定走 CloudBase AI 网关。
 - 快捷入口：菜谱收藏、采购单、个人菜谱、浏览历史。
 - 收藏列表已迁到独立页面 `pages/recipe-favorites/recipe-favorites.vue`（见 §5.10），本页只保留入口，不再直接读 `users` / `recipes`。
 
@@ -321,6 +320,13 @@ AI 生成流程（`fetchRecipe`）：
 - 图片上传到 `original-recipes/<openid>-<时间戳>-<随机>.<ext>`。
 - 提交调 `createOriginalRecipe`：有 `recipeId` 为编辑（校验 `createdBy`），否则新建（`isPublished = false`）。
 - 已发布的菜谱编辑后会提示「需要下架后重新发布才能更新公共菜单」。
+
+### 5.14 编辑资料 `pages/user/profile/index.vue`
+
+- 头像：`<button open-type="chooseAvatar">` → `wx.cloud.uploadFile` 到 `avatars/<openid>-<时间戳>.<ext>` → `updateUserProfile({ avatarUrl })`。
+- 昵称：`<input type="nickname">`，键盘上方可选「使用微信昵称」；失焦或点「保存」调 `updateUserProfile({ nickname })`。
+- 登录状态卡：展示已登录 / 登录中 / 登录失败与 OpenID 脱敏信息，失败可点「微信登录」重试。
+- 未登录时禁止修改，所有写操作先校验 `openid`。
 
 ---
 
@@ -362,13 +368,12 @@ toggleFavoriteRecipe(recipe, recipeKind)
 userStore = {
   openid, userId, nickname, avatarUrl,
   isLoggedIn, loginReady, loginLoading, loginError,
-  prefs,                      // { aiBackend: 'cloudbase' | 'openai_compatible' }
-  setUser, updateProfile, setPrefs,
+  setUser, updateProfile,
   setLoginPending, setLoginFailed, reset
 }
 ```
 
-小程序的全局单例状态，不做持久化，持久化的是 storage 里的 `openid / nickname / avatarUrl / aiBackend`。收藏、历史、采购单都已迁到独立集合，store 不再缓存 `savedRecipes`。
+小程序的全局单例状态，不做持久化，持久化的是 storage 里的 `openid / nickname / avatarUrl`。收藏、历史、采购单都已迁到独立集合，store 不再缓存 `savedRecipes`。
 
 ### 6.7 `utils/recipes.js`（537 行）
 
@@ -383,7 +388,7 @@ userStore = {
 
 | 函数 | 说明 |
 | --- | --- |
-| `createAiTask(type, payload, backend)` | 调 `createAiTask`，要求 `result.success && taskId`，否则抛错 |
+| `createAiTask(type, payload)` | 调 `createAiTask`，要求 `result.success && taskId`，否则抛错 |
 | `getAiTaskStatus(taskId)` | 调 `getAiTaskStatus`，返回任务对象 |
 | `waitForAiTask(taskId, { onUpdate, shouldStop })` | 轮询：`pending/processing` 用快轮询（2000ms），`FAST_POLL_WINDOW = 30000ms` 后转慢轮询（4000ms），`DEFAULT_TIMEOUT = 5min`；页面卸载可中断并抛 `TASK_POLL_ABORTED` |
 
@@ -407,29 +412,27 @@ uni API 的 Promise 化拦截器（uni-app 默认模板文件），让 `uni.xxx`
 
 - **作用**：静默登录，用 `OPENID` 建立 / 读取 v2 用户档案，并把 v1 内嵌数据迁移到新集合。
 - **入参**：无（只用 `OPENID`）。
-- **出参**：`{ success, openid, userId, nickname, avatarUrl, prefs }`。
-- **集合**：`users`（`_id` 等于 `openid`；新用户直接写 `schemaVersion: 2` 档案，含 `prefs.aiBackend`、`stats`）；迁移时读写 `favorites` / `history` / `shopping_items`。
+- **出参**：`{ success, openid, userId, nickname, avatarUrl }`。
+- **集合**：`users`（`_id` 等于 `openid`；新用户直接写 `schemaVersion: 2` 档案，含 `stats`）；迁移时读写 `favorites` / `history` / `shopping_items`。
 - **要点**：`schemaVersion !== 2` 的老用户会执行一次 `migrateLegacyUser`——`savedRecipes` → `favorites`、`shoppingList` → `shopping_items`、`historyRecipes` → `history`，随后用 `_.remove()` 删掉三个内嵌数组；被 `App.vue` 的 `silentLogin` 调用，超时 20 秒。
 
-### 7.2 `updateUserProfile`（约 90 行）
+### 7.2 `updateUserProfile`（约 60 行）
 
-- **作用**：更新昵称 / 头像 / AI 后端偏好。
-- **入参**：`{ nickname?, avatarUrl?, aiBackend? }`，至少一个；`aiBackend` 只接受 `cloudbase` / `openai_compatible`。
-- **出参**：`{ success, openid, nickname, avatarUrl, prefs }`。
-- **集合**：`users`（`aiBackend` 写到 `prefs.aiBackend`，并更新 `updatedAt`）。
+- **作用**：更新昵称 / 头像。
+- **入参**：`{ nickname?, avatarUrl? }`，至少一个。
+- **出参**：`{ success, openid, nickname, avatarUrl }`。
+- **集合**：`users`（更新对应字段与 `updatedAt`）。
 
-### 7.3 `createAiTask`（137 行）
+### 7.3 `createAiTask`（约 110 行）
 
 - **作用**：把一次 AI 请求写入任务队列，立即返回任务 ID。
-- **入参**：`{ type, payload, backend }`
-  - `type` 只能是 `recipe` / `meal_plan` / `recognize_image`。
+- **入参**：`{ type, payload }`
+  - `type` 只能是 `recipe` / `meal_plan`。
   - `payload` 按类型清洗：
     - `recipe`：`{ ingredients: string[] }`（至少 1 个）
     - `meal_plan`：`{ diners 1–10, dishCount 1–8, cuisine, preferences, availableIngredients }`
-    - `recognize_image`：`{ fileID }`
-  - `backend`：`cloudbase` / `openai_compatible`；`recognize_image` 可为空（走 worker 视觉模型），其余类型必须有效。
 - **出参**：`{ success: true, taskId, status: 'pending' }`。
-- **集合**：`ai_tasks`（写入 `type/status/backend/payload/result/resultRefs/createdBy/createdAt/attemptCount` 等，见附录 B）。
+- **集合**：`ai_tasks`（写入 `type/status/payload/result/resultRefs/createdBy/createdAt/attemptCount` 等，见附录 B）。
 - **要点**：这是「前端 → 队列」的唯一入口，前端不直接触碰大模型。
 
 ### 7.4 `getAiTaskStatus`（229 行）
@@ -552,7 +555,6 @@ uni API 的 Promise 化拦截器（uni-app 默认模板文件），让 `uni.xxx`
 | `openid` | string | 微信 openid |
 | `nickname` | string | 昵称，默认「美食爱好者」 |
 | `avatarUrl` | string | 云存储 fileID 或外链 |
-| `prefs.aiBackend` | string | `cloudbase`（默认）/ `openai_compatible` |
 | `stats` | object | `{ favoriteCount, historyCount, recipeCount }` |
 | `schemaVersion` | number | 当前为 `2` |
 | `createdAt` / `updatedAt` / `lastLoginAt` | date | 时间线 |
@@ -620,11 +622,10 @@ uni API 的 Promise 化拦截器（uni-app 默认模板文件），让 `uni.xxx`
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `_id` | string | 自动生成，即 `taskId` |
-| `type` | string | `recipe` / `meal_plan` / `recognize_image` |
+| `type` | string | `recipe` / `meal_plan` |
 | `status` | string | `pending` / `processing` / `succeeded` / `failed` |
-| `backend` | string | `cloudbase` / `openai_compatible` |
-| `payload` | object | 清洗后的入参（食材、人数、fileID 等） |
-| `result` | object/array | 模型原始结果（识图为数组） |
+| `payload` | object | 清洗后的入参（食材、人数等） |
+| `result` | object/array | 模型原始结果 |
 | `resultRefs` | object | `{ recipeId }` 或 `{ recipeIds: [] }` |
 | `errorMessage` | string | 失败原因 |
 | `createdBy` | string | 用户 openid |
@@ -675,8 +676,7 @@ ai_tasks._id ◄── recipes.taskId             （worker 写回）
 
 | 目录 | 写入方 | 用途 | 命名 |
 | --- | --- | --- | --- |
-| `ingredients/` | `pages/fridge/index.vue` | 识图用的食材照片 | `<时间戳>-<随机6位>.<ext>` |
-| `avatars/` | `pages/user/index.vue` | 用户头像 | `<openid>-<时间戳>.<ext>` |
+| `avatars/` | `pages/user/profile/index.vue` | 用户头像 | `<openid>-<时间戳>.<ext>` |
 | `original-recipes/` | `pages/user/original_recipes.vue` | 自创菜谱图片（最多 9 张） | `<openid>-<时间戳>-<随机6位>.<ext>` |
 
 **权限建议**：所有用户可读（展示需要），仅创建者可写。`fileID` 直接存进数据库字段（`cover`、`images`、`avatarUrl`），前端 `<image src>` 可直接渲染。
@@ -687,15 +687,13 @@ ai_tasks._id ◄── recipes.taskId             （worker 写回）
 
 ## 10. AI 双链路与任务队列
 
-### 10.1 两种后端
+### 10.1 模型出口
 
-| 后端值 | 含义 | 调用方 | 依赖配置 |
-| --- | --- | --- | --- |
-| `cloudbase` | 云端混元（CloudBase AI 网关） | `aiAssistant` 云函数 / worker | `CLOUDBASE_API_KEY`、`CLOUDBASE_ENV_ID`、`CLOUDBASE_AI_PROVIDER`、`CLOUDBASE_MODEL` |
-| `openai_compatible` | 本地 Ollama 等 OpenAI 兼容服务 | worker | `OPENAI_COMPAT_API_URL`、`OPENAI_COMPAT_MODEL`、`OPENAI_COMPAT_API_KEY`（可空） |
-| （识图专用） | 本地 Ollama 原生 `/api/generate` | worker | `OLLAMA_VISION_API_URL`、`OLLAMA_VISION_MODEL` |
+| 调用方 | 依赖配置 |
+| --- | --- |
+| `aiAssistant` 云函数 / worker | `CLOUDBASE_API_KEY`、`CLOUDBASE_ENV_ID`、`CLOUDBASE_AI_PROVIDER`、`CLOUDBASE_MODEL` |
 
-用户在「我的 → AI 后端」切换，值存在 storage `aiBackend`，默认 `cloudbase`，**只影响之后创建的任务**（任务里带了 `backend` 快照）。
+所有 AI 调用统一走 CloudBase AI 网关（混元），具体地址与模型由环境变量决定，前端不再提供切换。
 
 ### 10.2 同步问答链路（aiAssistant）
 
@@ -708,12 +706,12 @@ ai-chat 页 → aiAssistant 云函数 → CloudBase AI 网关 → 返回 reply
 ### 10.3 异步生成链路（任务队列）
 
 ```
-前端 createAiTask(type,payload,backend)
+前端 createAiTask(type,payload)
    → 云函数 createAiTask 写 ai_tasks(status=pending)
    → 前端拿 taskId，每 2s/4s 轮询 getAiTaskStatus
-   → ai-worker 每 3s 查 pending（识图优先）
+   → ai-worker 每 3s 查 pending
        → where({_id, status:'pending'}).update → processing, attemptCount+1
-       → 调模型（cloudbase / openai_compatible / ollama vision）
+       → 调 CloudBase AI 网关（混元）
        → 解析 JSON → 写 recipes（taskId, createdBy, ...）
        → 回填 ai_tasks(result, resultRefs, status=succeeded, finishedAt)
        → 失败：status=failed + errorMessage，attemptCount < maxAttempts 时重试
@@ -735,16 +733,13 @@ pending ──claim──► processing ──成功──► succeeded
 | 项 | 值 / 行为 |
 | --- | --- |
 | 默认 provider / model | `hunyuan` / `hunyuan-turbos-latest` |
-| OpenAI 兼容默认 model | `gpt-4o-mini` |
 | 轮询间隔 | `WORKER_POLL_INTERVAL_MS`，默认 3000ms（当前 `.env` 设为 1000ms） |
 | 僵死判定 | `WORKER_STALE_TIMEOUT_MS`，默认 600000ms（10 分钟） |
 | 最大尝试 | `WORKER_MAX_ATTEMPTS`，默认 3（当前 `.env` 设为 1） |
 | 抢占方式 | `where({ _id, status: 'pending' }).update({ status: 'processing', attemptCount: _.inc(1), startedAt })`，靠更新结果判断是否抢到 |
-| 任务优先级 | `recognize_image` 优先于 `recipe` / `meal_plan` |
-| 任务类型 | `recipe`（单菜）、`meal_plan`（一桌菜）、`recognize_image`（食材识别） |
+| 任务类型 | `recipe`（单菜）、`meal_plan`（一桌菜） |
 | 成功写回 | `recipes` 文档（`taskId/createdBy/sourceIngredients/createdAt/mealPlanMeta`）+ `ai_tasks.result/resultRefs/status='succeeded'/finishedAt` |
 | JSON 容错 | `extractJsonCandidate` 多候选提取：先整体解析，再截取首个 `{...}` / `[...]`，再修复常见尾逗号等 |
-| 视觉解析 | 兼容数组、`{ingredients:[]}`、纯文本列表等多种返回形状 |
 | 日志 | `WORKER_TASK_LOG_DETAIL=verbose` 时打印任务明细 |
 
 ### 10.6 提示词与推理参数
@@ -753,7 +748,6 @@ pending ──claim──► processing ──成功──► succeeded
 | --- | --- | --- |
 | 单菜生成 | `buildRecipePrompt`：要求输出严格 JSON（`title/tags/ingredients/steps/tips`），食材必须带用量，步骤 4–8 步，`stepNum` 连续 | `temperature 0.7`（创作）、`top_p 0.8`、`num_predict 1200` |
 | 宴客套餐 | `buildMealPlanPrompt`：按人数/菜数/菜系/忌口/主食材设计荤素搭配，每道菜单独成 JSON | 同上 |
-| 食材识别 | `IMAGE_RECOGNITION_PROMPT`：识别图片中的食材，输出名称 + 建议用量 | `temperature 0.2`（识别要稳） |
 | 后厨问答 | 云函数内 `SYSTEM_PROMPT`（后厨领班，200 字以内） | `temperature 0.7`、`max_tokens 500` |
 
 ### 10.7 前端轮询参数
@@ -777,7 +771,7 @@ wx.cloud.init({ env: 'cloud1-d6gdxrlf5bcb4e41c', traceUser: true })
 
 - 换云环境时**必改**这一行。
 - `onLaunch` 里紧接着 `silentLogin()`，`LOGIN_TIMEOUT = 20000`。
-- 登录成功后写 storage `openid` / `aiBackend`，并 `userStore.setUser`（收藏不再缓存在 store）。
+- 登录成功后写 storage `openid`，并 `userStore.setUser`（收藏不再缓存在 store）。
 
 ### 11.2 `manifest.json`
 
@@ -814,20 +808,13 @@ wx.cloud.init({ env: 'cloud1-d6gdxrlf5bcb4e41c', traceUser: true })
 | `CLOUDBASE_API_KEY` | CloudBase AI 网关密钥（JWT） | 必须属于**当前环境** |
 | `CLOUDBASE_AI_PROVIDER` / `CLOUDBASE_MODEL` | 云端模型 | 如 `hunyuan-exp` / `hunyuan-turbos-latest` |
 | `CLOUDBASE_API_URL` | 覆盖网关地址（可选） | 不填则拼 `https://{env}.api.tcloudbasegateway.com/v1/ai/{provider}/v1/chat/completions` |
-| `OPENAI_COMPAT_API_URL` | 本地 OpenAI 兼容服务地址 | 如 `http://127.0.0.1:11434/v1/chat/completions` |
-| `OPENAI_COMPAT_MODEL` | 本地模型名 | 如 `qwen3.5:4b`、`deepseek-r1:8b` |
-| `OPENAI_COMPAT_API_KEY` | 本地服务密钥（可空） | |
-| `OPENAI_COMPAT_DISABLE_RESPONSE_FORMAT` | 禁用 `response_format` | 部分 Ollama 模型不支持时设 `true` |
-| `OLLAMA_VISION_API_URL` / `OLLAMA_VISION_MODEL` | 识图模型地址 / 名称 | 默认 `http://127.0.0.1:11434/api/generate`、`qwen3.5:4b` |
 | `WORKER_POLL_INTERVAL_MS` | 轮询间隔 | 默认 3000 |
 | `WORKER_STALE_TIMEOUT_MS` | 僵死判定 | 默认 600000 |
 | `WORKER_MAX_ATTEMPTS` | 最大尝试次数 | 默认 3 |
 | `WORKER_TASK_LOG_DETAIL` | 日志详细度 | `verbose` 打印任务明细 |
 | `AI_*` | 推理参数 | `AI_TEMPERATURE`、`AI_TOP_P`、`AI_TOP_K`、`AI_MIN_P`、`AI_NUM_PREDICT`、`AI_MAX_TOKENS`、`AI_SEED`、`AI_REASONING_EFFORT` 等，未设则用代码默认 |
 
-> `.env` 里同时存在 `AI_TEMPERATURE=0.7` 这类全局值，和按任务类型覆盖的默认值（识别 0.2、问答走云函数自己的参数）。调参时注意优先级：**任务代码里的显式值 > `.env` > 代码默认**。
->
-> README 提到的 `AI_BACKEND` 是旧写法，实际后端由每个任务的 `backend` 字段决定，worker 不再读 `AI_BACKEND`。
+> `.env` 里的 `AI_*` 是全局默认值，问答走云函数自己的参数。调参时注意优先级：**任务代码里的显式值 > `.env` > 代码默认**。
 
 ### 11.5 `aiAssistant` 云函数环境变量（在云开发控制台配置）
 
@@ -934,7 +921,7 @@ npm start
 
 ### 第 8 步：功能联调
 
-按顺序自测：静默登录 → 首页精选 → 搜索 → 分类筛选 → 详情 → 冰箱识图 → 冰箱生成菜谱 → 宴客套餐 → 采购单 → 收藏 → 历史 → 自创菜谱 → 发布/下架 → AI 问答。
+按顺序自测：静默登录 → 首页精选 → 搜索 → 分类筛选 → 详情 → 冰箱生成菜谱 → 宴客套餐 → 采购单 → 收藏 → 历史 → 自创菜谱 → 发布/下架 → AI 问答。
 
 ### 第 9 步：提交
 
@@ -958,7 +945,6 @@ git push github main
 | HBuilderX | 编译 uni-app | 需要 uni-app 编译插件；SCSS 需 `compile-dart-sass` 或 `compile-node-sass` |
 | 微信开发者工具 | 运行小程序、部署云函数、看云开发控制台 | 导入项目根目录 |
 | Node.js | 跑 `ai-worker` | 建议 18+ |
-| Ollama（可选） | 本地模型 | 默认端口 11434 |
 
 ### 13.2 编译产物
 
@@ -976,7 +962,6 @@ git push github main
 | 任务一直 `pending` | `ai-worker` 没启动 / 密钥错误 / 环境 ID 不一致 | 看 worker 控制台日志 |
 | 任务 `failed`：未配置 CLOUDBASE_API_KEY | 云函数环境变量缺失 | 控制台补配 |
 | 收藏后看不到 | 收藏没写进 `favorites` / `openid` 为空 / 云函数未更新 | 看 `toggleFavorite` 返回；确认 `getFavorites` 已部署且入参是 `{ recipeId }` |
-| 识图无结果 | Ollama 未启动或视觉模型未拉取 | `ollama pull qwen3.5:4b`，确认 11434 端口 |
 
 ---
 
@@ -987,14 +972,12 @@ git push github main
 | 打开小程序 | `App.vue` | `login` | `users` 写 | 静默登录，20s 超时 |
 | 改头像 | 我的 | `updateUserProfile` | `users` 写 + 云存储 `avatars/` | |
 | 改昵称 | 我的 | `updateUserProfile` | `users` 写 | |
-| 切 AI 后端 | 我的 | — | storage `aiBackend` | 仅影响新任务 |
 | 首页精选 | 首页 | — | `menu` 读 | 按菜系各取 1 道 |
 | 搜索 | 搜索页 | `search` | `menu` 读 | 失败走本地兜底 |
 | 分类浏览 | 分类页 | — | `menu` 读 | 4 种模式 |
 | 看详情 | 详情页 | `recordViewHistory` | `menu`/`recipes`/`original_recipes` 读，`users` 写 | 记历史 |
 | 收藏 | 详情页 | `toggleFavorite` | `favorites` 写、`menu`/`users` 计数写 | 文档 id = openid_recipeId，幂等 |
 | 看收藏 | 菜谱收藏 | `getFavorites` | `favorites` 读 | 服务端分页，每页 12 |
-| 冰箱识图 | 冰箱页 | `createAiTask` + `getAiTaskStatus` | `ai_tasks`、云存储 `ingredients/` | worker 视觉模型 |
 | 生成菜谱 | 冰箱 → 详情 | `createAiTask` + `getAiTaskStatus` | `ai_tasks` → `recipes` | worker 文本模型 |
 | 宴客套餐 | 表单 → 结果 | `createAiTask` + `getAiTaskStatus` | `ai_tasks` → `recipes` | 一次多道菜 |
 | 加采购单 | 详情页 / 结果页 | `manageShoppingList(append)` | `shopping_items` 写 | 详情页带 `recipeId/recipeTitle/servings`，按 `openid+recipeId+name` upsert；结果页按 `recipeTitle` 归类 |
@@ -1032,7 +1015,6 @@ git push github main
 
 11. **收藏不再复制菜谱**：P2 起收藏只写 `favorites`（`recipeId + recipeKind + snapshot`），不再往 `recipes` 复制副本；详情页回查原集合，所以菜单菜谱更新后收藏卡片能看到最新封面，但 `snapshot` 仍保留收藏时的旧值。
 12. **任务残留 `processing`**：worker 崩溃会留下 `processing` 任务，靠 `resetStaleProcessingTasks`（10 分钟）恢复；若 worker 长时间不启动，任务会一直不动。
-13. **识图任务不吃 `backend`**：即使选了 `cloudbase`，识图仍走 `OLLAMA_VISION_*`，因为云端网关路径不通用。
 14. **历史 100 条上限**：超过后最旧记录被裁掉；同一菜谱只保留一条（按 `openid_recipeId` 去重），从菜单和收藏进入的是同一条。
 15. **`test26_10_15.md`** 是答辩材料，不是运行时文件，可保留作文档。
 
@@ -1056,9 +1038,9 @@ git push github main
 
 | 函数 | 行数 | 触发方 | 集合 | 入参要点 | 出参要点 |
 | --- | --- | --- | --- | --- | --- |
-| `login` | ~190 | App 启动 | `users`、`favorites`/`history`/`shopping_items`（迁移） | 无 | `openid/nickname/avatarUrl/prefs` |
-| `updateUserProfile` | ~90 | 我的 | `users` | `nickname?/avatarUrl?/aiBackend?` | `nickname/avatarUrl/prefs` |
-| `createAiTask` | 136 | 冰箱/详情/套餐 | `ai_tasks` | `type/payload/backend` | `taskId/status` |
+| `login` | ~190 | App 启动 | `users`、`favorites`/`history`/`shopping_items`（迁移） | 无 | `openid/nickname/avatarUrl` |
+| `updateUserProfile` | ~60 | 编辑资料 | `users` | `nickname?/avatarUrl?` | `nickname/avatarUrl` |
+| `createAiTask` | ~110 | 冰箱/详情/套餐 | `ai_tasks` | `type/payload` | `taskId/status` |
 | `getAiTaskStatus` | 229 | 三个 AI 页轮询 | `ai_tasks`、`recipes` | `taskId` | `status/result/resultRefs` |
 | `recordViewHistory` | ~80 | 详情页 | `history`、`users` | `recipe{recipeId,title,cover,recipeKind}` | `count` |
 | `getViewHistory` | ~60 | 历史页 | `history` | `page/pageSize` | `items/total/hasMore` |
@@ -1076,17 +1058,14 @@ git push github main
 ```jsonc
 {
   "_id": "任务ID（= taskId）",
-  "type": "recipe | meal_plan | recognize_image",
+  "type": "recipe | meal_plan",
   "status": "pending | processing | succeeded | failed",
-  "backend": "cloudbase | openai_compatible",
   "payload": {
     // recipe
     "ingredients": ["西红柿", "鸡蛋"],
     // meal_plan
     "diners": 2, "dishCount": 3, "cuisine": "家常菜",
-    "preferences": "清淡", "availableIngredients": "鸡肉",
-    // recognize_image
-    "fileID": "cloud://..."
+    "preferences": "清淡", "availableIngredients": "鸡肉"
   },
   "result": { "title": "...", "tags": [], "ingredients": [], "steps": [], "tips": "" },
   "resultRefs": { "recipeId": "..." },       // 或用 recipeIds: []
@@ -1113,7 +1092,6 @@ git push github main
 | worker | `ai-worker/index.js`，本地 Node 进程，真正调大模型的人 |
 | CloudBase AI 网关 | 腾讯云提供的模型聚合 HTTP 接口，`/v1/ai/{provider}/v1/chat/completions` |
 | 混元 | 腾讯自研大模型，本项目云端默认 provider |
-| Ollama | 本地模型运行时，提供 OpenAI 兼容接口与 `/api/generate` |
 | `resultRefs` | 任务完成后指向产物的引用，前端据此二次查库 |
 | FAST/SLOW 轮询 | 前端 2s/4s 两档轮询，30 秒后降频 |
 | `miniprogramRoot` | 开发者工具读取小程序代码的根目录（本项目指向编译产物） |

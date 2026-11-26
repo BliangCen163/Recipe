@@ -61,7 +61,6 @@
 | `openid` | string | ✔ | 冗余一份，兼容旧代码与 `where` 查询 |
 | `nickname` | string | ✔ | 默认「美食爱好者」 |
 | `avatarUrl` | string | ✔ | 云存储 fileID 或外链，默认 `''` |
-| `prefs.aiBackend` | string |  | `cloudbase` / `openai_compatible`，默认 `cloudbase` |
 | `stats.favoriteCount` | number |  | 收藏数，云函数 `_.inc` 维护 |
 | `stats.historyCount` | number |  | 历史条数（上限 100） |
 | `stats.recipeCount` | number |  | 自创菜谱数 |
